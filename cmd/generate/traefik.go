@@ -1,4 +1,4 @@
-package cmd
+package generate
 
 import (
 	"fmt"
@@ -6,34 +6,35 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/mufeedali/quadlet-helper/internal/shared"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
-var generateTraefikCmd = &cobra.Command{
+var traefikCmd = &cobra.Command{
 	Use:   "traefik",
 	Short: "Generate a sanitized traefik.yaml.example",
 	Long: `This command reads your traefik.yaml, sanitizes sensitive information
 like email addresses and network names, and creates a traefik.yaml.example file.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(c *cobra.Command, args []string) {
 		containersDir := viper.GetString("containers-dir")
-		realContainersDir := resolveContainersDir(containersDir)
+		realContainersDir := shared.ResolveContainersDir(containersDir)
 
 		traefikConfigPath := filepath.Join(realContainersDir, "traefik", "container-config", "traefik", "traefik.yaml")
 		exampleConfigPath := filepath.Join(realContainersDir, "traefik", "traefik.yaml.example")
 
-		fmt.Println(titleStyle.Render("Starting generation of Traefik config example..."))
+		fmt.Println(shared.TitleStyle.Render("Starting generation of Traefik config example..."))
 
 		if _, err := os.Stat(traefikConfigPath); os.IsNotExist(err) {
-			fmt.Println(errorStyle.Render(fmt.Sprintf("Error: %s not found!", traefikConfigPath)))
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error: %s not found!", traefikConfigPath)))
 			os.Exit(1)
 		}
 
-		fmt.Println("  -> Reading: " + filePathStyle.Render(traefikConfigPath))
+		fmt.Println("  -> Reading: " + shared.FilePathStyle.Render(traefikConfigPath))
 
 		content, err := os.ReadFile(traefikConfigPath)
 		if err != nil {
-			fmt.Println(errorStyle.Render(fmt.Sprintf("Error reading file: %v", err)))
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error reading file: %v", err)))
 			os.Exit(1)
 		}
 
@@ -41,12 +42,12 @@ like email addresses and network names, and creates a traefik.yaml.example file.
 
 		err = os.WriteFile(exampleConfigPath, []byte(sanitizedContent), 0644)
 		if err != nil {
-			fmt.Println(errorStyle.Render(fmt.Sprintf("Error writing example file: %v", err)))
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error writing example file: %v", err)))
 			os.Exit(1)
 		}
 
-		fmt.Println(successStyle.Render("     Generated: ") + filePathStyle.Render(exampleConfigPath))
-		fmt.Println(titleStyle.Render("\nGeneration complete."))
+		fmt.Println(shared.SuccessStyle.Render("     Generated: ") + shared.FilePathStyle.Render(exampleConfigPath))
+		fmt.Println(shared.TitleStyle.Render("\nGeneration complete."))
 	},
 }
 
@@ -67,8 +68,4 @@ func sanitizeTraefikConfig(content string) string {
 	}
 
 	return content
-}
-
-func init() {
-	generateCmd.AddCommand(generateTraefikCmd)
 }

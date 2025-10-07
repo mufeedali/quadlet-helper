@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/mufeedali/quadlet-helper/cmd/cloudflare"
+	"github.com/mufeedali/quadlet-helper/cmd/generate"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -32,7 +34,14 @@ func init() {
 	defaultContainersDir := fmt.Sprintf("%s/.config/containers/systemd", home)
 
 	rootCmd.PersistentFlags().String("containers-dir", defaultContainersDir, "Root directory for container configurations")
-	viper.BindPFlag("containers-dir", rootCmd.PersistentFlags().Lookup("containers-dir"))
+	if err := viper.BindPFlag("containers-dir", rootCmd.PersistentFlags().Lookup("containers-dir")); err != nil {
+		fmt.Println("Error binding flag:", err)
+		os.Exit(1)
+	}
+
+	// Add subcommands
+	rootCmd.AddCommand(cloudflare.CloudflareCmd)
+	rootCmd.AddCommand(generate.GenerateCmd)
 }
 
 func initConfig() {

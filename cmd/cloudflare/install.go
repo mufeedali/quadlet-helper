@@ -1,4 +1,4 @@
-package cmd
+package cloudflare
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mufeedali/quadlet-helper/internal/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -38,23 +39,26 @@ Persistent=true
 WantedBy=timers.target
 `
 
-var cloudflareInstallCmd = &cobra.Command{
+var installCmd = &cobra.Command{
 	Use:   "install",
 	Short: "Install the Cloudflare IP updater service",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println(titleStyle.Render("Installing Cloudflare IP Updater..."))
+	Run: func(c *cobra.Command, args []string) {
+		fmt.Println(shared.TitleStyle.Render("Installing Cloudflare IP Updater..."))
 
 		home, err := os.UserHomeDir()
 		if err != nil {
-			fmt.Println(errorStyle.Render(fmt.Sprintf("Error finding home directory: %v", err)))
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error finding home directory: %v", err)))
 			os.Exit(1)
 		}
 		systemdUserDir := filepath.Join(home, ".config", "systemd", "user")
-		os.MkdirAll(systemdUserDir, 0755)
+		if err := os.MkdirAll(systemdUserDir, 0755); err != nil {
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error creating systemd directory: %v", err)))
+			os.Exit(1)
+		}
 
 		executablePath, err := os.Executable()
 		if err != nil {
-			fmt.Println(errorStyle.Render(fmt.Sprintf("Error finding executable path: %v", err)))
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error finding executable path: %v", err)))
 			os.Exit(1)
 		}
 
@@ -62,40 +66,36 @@ var cloudflareInstallCmd = &cobra.Command{
 		serviceFilePath := filepath.Join(systemdUserDir, "cloudflare-ip-updater.service")
 		err = os.WriteFile(serviceFilePath, []byte(serviceContent), 0644)
 		if err != nil {
-			fmt.Println(errorStyle.Render(fmt.Sprintf("Error writing service file: %v", err)))
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error writing service file: %v", err)))
 			os.Exit(1)
 		}
-		fmt.Println(checkMark + " Created " + filePathStyle.Render(serviceFilePath))
+		fmt.Println(shared.CheckMark + " Created " + shared.FilePathStyle.Render(serviceFilePath))
 
 		timerFilePath := filepath.Join(systemdUserDir, "cloudflare-ip-updater.timer")
 		err = os.WriteFile(timerFilePath, []byte(timerTemplate), 0644)
 		if err != nil {
-			fmt.Println(errorStyle.Render(fmt.Sprintf("Error writing timer file: %v", err)))
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error writing timer file: %v", err)))
 			os.Exit(1)
 		}
-		fmt.Println(checkMark + " Created " + filePathStyle.Render(timerFilePath))
+		fmt.Println(shared.CheckMark + " Created " + shared.FilePathStyle.Render(timerFilePath))
 
 		runSystemctl("daemon-reload")
 		runSystemctl("enable", "cloudflare-ip-updater.timer")
 		runSystemctl("start", "cloudflare-ip-updater.timer")
 
-		fmt.Println(successStyle.Render("\n✓ Installation complete!"))
-		fmt.Println(titleStyle.Render("Timer status:"))
+		fmt.Println(shared.SuccessStyle.Render("\n✓ Installation complete!"))
+		fmt.Println(shared.TitleStyle.Render("Timer status:"))
 		runSystemctl("--no-pager", "status", "cloudflare-ip-updater.timer")
 	},
 }
 
 func runSystemctl(args ...string) {
 	allArgs := append([]string{"--user"}, args...)
-	cmd := exec.Command("systemctl", allArgs...)
-	output, err := cmd.CombinedOutput()
+	c := exec.Command("systemctl", allArgs...)
+	output, err := c.CombinedOutput()
 	if err != nil {
-		fmt.Println(errorStyle.Render(fmt.Sprintf("Error running systemctl %s: %v\n%s", strings.Join(args, " "), err, string(output))))
+		fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error running systemctl %s: %v\n%s", strings.Join(args, " "), err, string(output))))
 		return
 	}
 	fmt.Print(string(output))
-}
-
-func init() {
-	cloudflareCmd.AddCommand(cloudflareInstallCmd)
 }

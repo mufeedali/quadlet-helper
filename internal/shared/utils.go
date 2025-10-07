@@ -1,4 +1,4 @@
-package cmd
+package shared
 
 import (
 	"fmt"
@@ -6,21 +6,21 @@ import (
 	"path/filepath"
 )
 
-// resolveContainersDir resolves symlinks in the containers directory path.
+// ResolveContainersDir resolves symlinks in the containers directory path.
 // Returns the resolved path, or the original path if resolution fails (with a warning).
-func resolveContainersDir(containersDir string) string {
+func ResolveContainersDir(containersDir string) string {
 	realPath, err := filepath.EvalSymlinks(containersDir)
 	if err != nil {
-		fmt.Println(warningStyle.Render(fmt.Sprintf("Warning: could not resolve symlink for %s: %v. Proceeding with original path.", containersDir, err)))
+		fmt.Println(WarningStyle.Render(fmt.Sprintf("Warning: could not resolve symlink for %s: %v. Proceeding with original path.", containersDir, err)))
 		return containersDir
 	}
 	return realPath
 }
 
-// walkWithSymlinks walks a directory tree following symlinks.
+// WalkWithSymlinks walks a directory tree following symlinks.
 // It prevents infinite loops by tracking visited directories.
 // The walkFn is called for each file and directory found.
-func walkWithSymlinks(root string, walkFn func(path string, info os.FileInfo) error) error {
+func WalkWithSymlinks(root string, walkFn func(path string, info os.FileInfo) error) error {
 	visited := make(map[string]bool)
 
 	var walk func(string) error

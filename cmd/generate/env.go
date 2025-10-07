@@ -1,4 +1,4 @@
-package cmd
+package generate
 
 import (
 	"bufio"
@@ -7,52 +7,53 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mufeedali/quadlet-helper/internal/shared"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
-var generateEnvCmd = &cobra.Command{
+var envCmd = &cobra.Command{
 	Use:   "env",
 	Short: "Generate .env.example files from .env files",
 	Long: `This command searches for .env files in the specified containers directory
 and creates a corresponding .env.example file for each, stripping the values.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(c *cobra.Command, args []string) {
 		containersDir := viper.GetString("containers-dir")
-		realContainersDir := resolveContainersDir(containersDir)
+		realContainersDir := shared.ResolveContainersDir(containersDir)
 
-		fmt.Println(titleStyle.Render("Searching for .env files in " + filePathStyle.Render(realContainersDir) + "..."))
+		fmt.Println(shared.TitleStyle.Render("Searching for .env files in " + shared.FilePathStyle.Render(realContainersDir) + "..."))
 
 		foundAny := false
 		hasErrors := false
 
-		err := walkWithSymlinks(realContainersDir, func(path string, info os.FileInfo) error {
+		err := shared.WalkWithSymlinks(realContainersDir, func(path string, info os.FileInfo) error {
 			if !info.IsDir() && info.Name() == ".env" {
 				foundAny = true
-				fmt.Println("  -> Found: " + filePathStyle.Render(path))
+				fmt.Println("  -> Found: " + shared.FilePathStyle.Render(path))
 				err := processEnvFile(path)
 				if err != nil {
 					hasErrors = true
-					fmt.Println(errorStyle.Render(fmt.Sprintf("     Error processing %s: %v", path, err)))
+					fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("     Error processing %s: %v", path, err)))
 				}
 			}
 			return nil
 		})
 
 		if err != nil {
-			fmt.Println(errorStyle.Render(fmt.Sprintf("Error walking directory: %v", err)))
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error walking directory: %v", err)))
 			os.Exit(1)
 		}
 
 		if !foundAny {
-			fmt.Println(warningStyle.Render("No .env files found in any subdirectories."))
+			fmt.Println(shared.WarningStyle.Render("No .env files found in any subdirectories."))
 		}
 
 		if hasErrors {
-			fmt.Println(errorStyle.Render("\nGeneration completed with errors."))
+			fmt.Println(shared.ErrorStyle.Render("\nGeneration completed with errors."))
 			os.Exit(1)
 		}
 
-		fmt.Println(titleStyle.Render("\nGeneration complete."))
+		fmt.Println(shared.TitleStyle.Render("\nGeneration complete."))
 	},
 }
 
@@ -61,14 +62,18 @@ func processEnvFile(path string) error {
 	if err != nil {
 		return err
 	}
-	defer inFile.Close()
+	defer func() {
+		_ = inFile.Close()
+	}()
 
 	exampleFilePath := filepath.Join(filepath.Dir(path), ".env.example")
 	outFile, err := os.Create(exampleFilePath)
 	if err != nil {
 		return err
 	}
-	defer outFile.Close()
+	defer func() {
+		_ = outFile.Close()
+	}()
 
 	scanner := bufio.NewScanner(inFile)
 	for scanner.Scan() {
@@ -96,10 +101,6 @@ func processEnvFile(path string) error {
 		return err
 	}
 
-	fmt.Println(successStyle.Render("     Generated: ") + filePathStyle.Render(exampleFilePath))
+	fmt.Println(shared.SuccessStyle.Render("     Generated: ") + shared.FilePathStyle.Render(exampleFilePath))
 	return nil
-}
-
-func init() {
-	generateCmd.AddCommand(generateEnvCmd)
 }
