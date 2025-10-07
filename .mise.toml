@@ -1,0 +1,11 @@
+[tools]
+go = "1.25.1"
+
+[tasks]
+install = '''
+go build -o qh.tmp .
+install_dir="${XDG_BIN_HOME:-$HOME/.local/bin}"
+mkdir -p "$install_dir"
+mv qh.tmp "$install_dir/qh"
+echo "Installed qh to $install_dir/qh"
+'''
