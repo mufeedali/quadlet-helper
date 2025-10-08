@@ -17,11 +17,11 @@ var traefikCmd = &cobra.Command{
 	Long: `This command reads your traefik.yaml, sanitizes sensitive information
 like email addresses and network names, and creates a traefik.yaml.example file.`,
 	Run: func(c *cobra.Command, args []string) {
-		containersDir := viper.GetString("containers-dir")
-		realContainersDir := shared.ResolveContainersDir(containersDir)
+		containersPath := viper.GetString("containers-path")
+		realContainersPath := shared.ResolveContainersDir(containersPath)
 
-		traefikConfigPath := filepath.Join(realContainersDir, "traefik", "container-config", "traefik", "traefik.yaml")
-		exampleConfigPath := filepath.Join(realContainersDir, "traefik", "traefik.yaml.example")
+		traefikConfigPath := filepath.Join(realContainersPath, "traefik", "container-config", "traefik", "traefik.yaml")
+		exampleConfigPath := filepath.Join(realContainersPath, "traefik", "traefik.yaml.example")
 
 		fmt.Println(shared.TitleStyle.Render("Starting generation of Traefik config example..."))
 

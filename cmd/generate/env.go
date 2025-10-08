@@ -18,15 +18,15 @@ var envCmd = &cobra.Command{
 	Long: `This command searches for .env files in the specified containers directory
 and creates a corresponding .env.example file for each, stripping the values.`,
 	Run: func(c *cobra.Command, args []string) {
-		containersDir := viper.GetString("containers-dir")
-		realContainersDir := shared.ResolveContainersDir(containersDir)
+		containersPath := viper.GetString("containers-path")
+		realContainersPath := shared.ResolveContainersDir(containersPath)
 
-		fmt.Println(shared.TitleStyle.Render("Searching for .env files in " + shared.FilePathStyle.Render(realContainersDir) + "..."))
+		fmt.Println(shared.TitleStyle.Render("Searching for .env files in " + shared.FilePathStyle.Render(realContainersPath) + "..."))
 
 		foundAny := false
 		hasErrors := false
 
-		err := shared.WalkWithSymlinks(realContainersDir, func(path string, info os.FileInfo) error {
+		err := shared.WalkWithSymlinks(realContainersPath, func(path string, info os.FileInfo) error {
 			if !info.IsDir() && info.Name() == ".env" {
 				foundAny = true
 				fmt.Println("  -> Found: " + shared.FilePathStyle.Render(path))
