@@ -84,7 +84,7 @@ func addInstallSection(content string) (string, bool) {
 	}
 	installSection := `
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target default.target
 `
 	return content + installSection, true
 }
