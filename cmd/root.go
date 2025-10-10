@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/mufeedali/quadlet-helper/cmd/backup"
 	"github.com/mufeedali/quadlet-helper/cmd/cloudflare"
 	"github.com/mufeedali/quadlet-helper/cmd/generate"
 	"github.com/mufeedali/quadlet-helper/cmd/unit"
@@ -41,6 +42,7 @@ func init() {
 	}
 
 	// Add subcommands
+	rootCmd.AddCommand(backup.BackupCmd)
 	rootCmd.AddCommand(cloudflare.CloudflareCmd)
 	rootCmd.AddCommand(generate.GenerateCmd)
 	rootCmd.AddCommand(unit.UnitCmd)
