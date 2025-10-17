@@ -13,22 +13,30 @@ import (
 )
 
 var validateCmd = &cobra.Command{
-	Use:   "validate [unit-name]",
+	Use:   "validate [unit-name...]",
 	Short: "Validate quadlet unit file(s)",
 	Long: `This command runs systemd's own generator and verification tools
 to check for errors in quadlet files before they are installed.`,
 	ValidArgsFunction: unitCompletionFunc,
 	Run: func(cmd *cobra.Command, args []string) {
+		// If one or more unit names are provided, validate each individually.
+		// If no args are provided, validate all units (existing behavior).
 		if len(args) > 0 {
-			unitName := args[0]
-			fmt.Println(shared.TitleStyle.Render(fmt.Sprintf("Validating %s...", unitName)))
-			ok, output := validateUnit(unitName)
-			if !ok {
-				fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("✗ Validation failed for %s:", unitName)))
-				fmt.Println(output)
+			var failures int
+			for _, unitName := range args {
+				fmt.Println(shared.TitleStyle.Render(fmt.Sprintf("Validating %s...", unitName)))
+				ok, output := validateUnit(unitName)
+				if !ok {
+					fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("✗ Validation failed for %s:", unitName)))
+					fmt.Println(output)
+					failures++
+				} else {
+					fmt.Println(shared.SuccessStyle.Render(fmt.Sprintf("✓ %s is valid.", unitName)))
+				}
+			}
+			if failures > 0 {
 				os.Exit(1)
 			}
-			fmt.Println(shared.SuccessStyle.Render(fmt.Sprintf("✓ %s is valid.", unitName)))
 		} else {
 			if !validateAllUnits() {
 				os.Exit(1)

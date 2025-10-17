@@ -4,30 +4,39 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/mufeedali/quadlet-helper/internal/shared"
 	"github.com/spf13/cobra"
 )
 
 var stopCmd = &cobra.Command{
-	Use:               "stop <unit-name>",
-	Short:             "Stop a quadlet unit",
-	Args:              cobra.ExactArgs(1),
+	Use:               "stop <unit-name>...",
+	Short:             "Stop one or more quadlet units",
+	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: unitCompletionFunc,
 	Run: func(cmd *cobra.Command, args []string) {
-		unitName := args[0]
-		serviceName := fmt.Sprintf("%s.service", unitName)
+		// Build service names from provided unit names
+		services := make([]string, len(args))
+		for i, unitName := range args {
+			services[i] = fmt.Sprintf("%s.service", unitName)
+		}
 
-		fmt.Println(shared.TitleStyle.Render(fmt.Sprintf("Stopping %s...", serviceName)))
+		fmt.Println(shared.TitleStyle.Render(fmt.Sprintf("Stopping %s...", strings.Join(services, " "))))
 
-		c := exec.Command("systemctl", "--user", "stop", serviceName)
+		// Build systemctl args and stop all services in one call
+		cmdArgs := []string{"--user", "stop"}
+		cmdArgs = append(cmdArgs, services...)
+		c := exec.Command("systemctl", cmdArgs...)
 		output, err := c.CombinedOutput()
 		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error stopping service: %v\n%s", err, string(output))))
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error stopping services: %v\n%s", err, string(output))))
 			os.Exit(1)
 		}
 
-		fmt.Println(string(output))
-		fmt.Println(shared.SuccessStyle.Render(fmt.Sprintf("✓ Successfully stopped %s", serviceName)))
+		if len(output) > 0 {
+			fmt.Println(string(output))
+		}
+		fmt.Println(shared.SuccessStyle.Render(fmt.Sprintf("✓ Successfully stopped %s", strings.Join(services, ", "))))
 	},
 }

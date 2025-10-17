@@ -11,46 +11,63 @@ import (
 )
 
 var disableCmd = &cobra.Command{
-	Use:               "disable <unit-name>",
-	Short:             "Disable a quadlet unit from starting on boot",
-	Args:              cobra.ExactArgs(1),
+	Use:               "disable <unit-name>...",
+	Short:             "Disable one or more quadlet units from starting on boot",
+	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: unitCompletionFunc,
 	Run: func(cmd *cobra.Command, args []string) {
-		unitName := args[0]
 		containersPath := viper.GetString("containers-path")
 		realContainersPath := shared.ResolveContainersDir(containersPath)
 
-		quadletFile, err := findQuadletFile(realContainersPath, unitName)
-		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error: %v", err)))
+		var anyChanged bool
+		var failures int
+
+		for _, unitName := range args {
+			quadletFile, err := findQuadletFile(realContainersPath, unitName)
+			if err != nil {
+				fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error: %v", err)))
+				failures++
+				continue
+			}
+
+			fmt.Println("  Found: " + shared.FilePathStyle.Render(quadletFile))
+
+			content, err := os.ReadFile(quadletFile)
+			if err != nil {
+				fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error reading file: %v", err)))
+				failures++
+				continue
+			}
+
+			newContent, changed := removeInstallSection(string(content))
+			if !changed {
+				fmt.Println(shared.WarningStyle.Render(fmt.Sprintf("Unit %s is not enabled, nothing to do.", unitName)))
+				continue
+			}
+
+			err = os.WriteFile(quadletFile, []byte(newContent), 0644)
+			if err != nil {
+				fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error writing file: %v", err)))
+				failures++
+				continue
+			}
+
+			fmt.Println(shared.CheckMark + " Removed [Install] section from " + shared.FilePathStyle.Render(quadletFile))
+			anyChanged = true
+			fmt.Println(shared.SuccessStyle.Render(fmt.Sprintf("✓ Successfully disabled %s", unitName)))
+		}
+
+		if anyChanged {
+			runDaemonReload()
+		}
+
+		if failures > 0 {
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("✗ %d unit(s) failed to disable.", failures)))
 			os.Exit(1)
 		}
 
-		fmt.Println("  Found: " + shared.FilePathStyle.Render(quadletFile))
-
-		content, err := os.ReadFile(quadletFile)
-		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error reading file: %v", err)))
-			os.Exit(1)
-		}
-
-		newContent, changed := removeInstallSection(string(content))
-		if !changed {
-			fmt.Println(shared.WarningStyle.Render("Unit is not enabled, nothing to do."))
-			return
-		}
-
-		err = os.WriteFile(quadletFile, []byte(newContent), 0644)
-		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error writing file: %v", err)))
-			os.Exit(1)
-		}
-
-		fmt.Println(shared.CheckMark + " Removed [Install] section from " + shared.FilePathStyle.Render(quadletFile))
-
-		runDaemonReload()
-
-		fmt.Println(shared.SuccessStyle.Render(fmt.Sprintf("✓ Successfully disabled %s", unitName)))
+		// If we got here and no failures, print an overall success line
+		fmt.Println(shared.SuccessStyle.Render(fmt.Sprintf("✓ Successfully processed %d unit(s)", len(args))))
 	},
 }
 
