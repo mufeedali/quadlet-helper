@@ -11,13 +11,7 @@ func GetServiceTemplate(executablePath, configPath, backupName string, config *C
 	template := `[Unit]
 Description=Backup: %s
 Wants=network-online.target
-After=network-online.target`
-
-	if config.Notifications.Enabled && config.Notifications.OnFailure {
-		template += fmt.Sprintf("\nOnFailure=backup-notify@%s.service", backupName)
-	}
-
-	template += `
+After=network-online.target
 
 [Service]
 Type=oneshot

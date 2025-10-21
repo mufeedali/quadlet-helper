@@ -79,17 +79,6 @@ var installCmd = &cobra.Command{
 		}
 		fmt.Println(shared.CheckMark + " Created " + shared.FilePathStyle.Render(timerFilePath))
 
-		// Create notification service if notifications enabled
-		if config.Notifications.Enabled && config.Notifications.OnFailure {
-			notifyContent := backup.GetNotificationServiceTemplate(executablePath, backupName)
-			notifyFilePath, _ := backup.GetNotificationServiceFilePath(backupName)
-			if err := os.WriteFile(notifyFilePath, []byte(notifyContent), 0644); err != nil {
-				fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error writing notification service: %v", err)))
-				os.Exit(1)
-			}
-			fmt.Println(shared.CheckMark + " Created " + shared.FilePathStyle.Render(notifyFilePath))
-		}
-
 		// Reload systemd
 		runSystemctl("daemon-reload")
 
