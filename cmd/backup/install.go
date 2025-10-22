@@ -3,10 +3,10 @@ package backup
 import (
 	"fmt"
 	"os"
-	"os/exec"
 
 	"github.com/mufeedali/quadlet-helper/internal/backup"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
+	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 )
 
@@ -20,7 +20,7 @@ var installCmd = &cobra.Command{
 
 		// Check if already installed
 		timerPath, _ := backup.GetTimerFilePath(backupName)
-		if fileExists(timerPath) {
+		if shared.FileExists(timerPath) {
 			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Backup '%s' is already installed", backupName)))
 			fmt.Println("\nTo reinstall, first uninstall it with:")
 			fmt.Printf("  qh backup uninstall %s\n", backupName)
@@ -80,25 +80,25 @@ var installCmd = &cobra.Command{
 		fmt.Println(shared.CheckMark + " Created " + shared.FilePathStyle.Render(timerFilePath))
 
 		// Reload systemd
-		runSystemctl("daemon-reload")
+		if _, err := systemd.DaemonReload(); err != nil {
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error reloading systemd: %v", err)))
+			os.Exit(1)
+		}
 
 		// Enable and start timer
-		runSystemctl("enable", fmt.Sprintf("%s-backup.timer", backupName))
-		runSystemctl("start", fmt.Sprintf("%s-backup.timer", backupName))
+		timerName := backup.BackupTimerName(backupName)
+		if _, err := systemd.Enable(timerName); err != nil {
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error enabling timer: %v", err)))
+			os.Exit(1)
+		}
+		if _, err := systemd.Start(timerName); err != nil {
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error starting timer: %v", err)))
+			os.Exit(1)
+		}
 
 		fmt.Println(shared.SuccessStyle.Render("\n✓ Installation complete!"))
 		fmt.Println(shared.TitleStyle.Render("Timer status:"))
-		runSystemctl("--no-pager", "status", fmt.Sprintf("%s-backup.timer", backupName))
+		output, _ := systemd.Status(timerName)
+		fmt.Println(output)
 	},
-}
-
-func runSystemctl(args ...string) {
-	allArgs := append([]string{"--user"}, args...)
-	c := exec.Command("systemctl", allArgs...)
-	output, err := c.CombinedOutput()
-	if err != nil {
-		fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error running systemctl: %v\n%s", err, string(output))))
-		return
-	}
-	fmt.Print(string(output))
 }

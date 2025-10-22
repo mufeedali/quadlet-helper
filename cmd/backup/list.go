@@ -3,10 +3,10 @@ package backup
 import (
 	"fmt"
 	"os"
-	"os/exec"
 
 	"github.com/mufeedali/quadlet-helper/internal/backup"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
+	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 )
 
@@ -39,15 +39,13 @@ var listCmd = &cobra.Command{
 
 			// Check if service is installed
 			timerFilePath, _ := backup.GetTimerFilePath(name)
-			installed := fileExists(timerFilePath)
+			installed := shared.FileExists(timerFilePath)
 
 			// Check if timer is active
 			active := false
+			timerName := backup.BackupTimerName(name)
 			if installed {
-				cmd := exec.Command("systemctl", "--user", "is-active", fmt.Sprintf("%s-backup.timer", name))
-				if err := cmd.Run(); err == nil {
-					active = true
-				}
+				active = systemd.IsActive(timerName)
 			}
 
 			// Display status
@@ -73,18 +71,12 @@ var listCmd = &cobra.Command{
 
 			if active {
 				// Show next run time
-				cmd := exec.Command("systemctl", "--user", "show", fmt.Sprintf("%s-backup.timer", name), "--property=NextElapseUSecRealtime", "--value")
-				if output, err := cmd.Output(); err == nil && len(output) > 0 {
-					fmt.Printf("  Next run: %s", string(output))
+				if output, err := systemd.Show(timerName, "NextElapseUSecRealtime"); err == nil && len(output) > 0 {
+					fmt.Printf("  Next run: %s", output)
 				}
 			}
 
 			fmt.Println()
 		}
 	},
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }

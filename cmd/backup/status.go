@@ -3,10 +3,10 @@ package backup
 import (
 	"fmt"
 	"os"
-	"os/exec"
 
 	"github.com/mufeedali/quadlet-helper/internal/backup"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
+	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 )
 
@@ -37,18 +37,22 @@ var statusCmd = &cobra.Command{
 		}
 
 		// Show timer status
+		timerName := backup.BackupTimerName(backupName)
+		serviceName := backup.BackupServiceName(backupName)
+
 		fmt.Println(shared.TitleStyle.Render("Timer:"))
-		runSystemctl("--no-pager", "status", fmt.Sprintf("%s-backup.timer", backupName))
+		output, _ := systemd.Status(timerName)
+		fmt.Println(output)
 
 		fmt.Println()
 		fmt.Println(shared.TitleStyle.Render("Service:"))
-		runSystemctl("--no-pager", "status", fmt.Sprintf("%s-backup.service", backupName))
+		output, _ = systemd.Status(serviceName)
+		fmt.Println(output)
 
 		// Show next run time
 		fmt.Println()
 		fmt.Println(shared.TitleStyle.Render("Schedule:"))
-		listCmd := exec.Command("systemctl", "--user", "list-timers", fmt.Sprintf("%s-backup.timer", backupName), "--no-pager")
-		output, _ := listCmd.CombinedOutput()
-		fmt.Print(string(output))
+		listOutput, _ := systemd.ListTimers(timerName)
+		fmt.Print(listOutput)
 	},
 }

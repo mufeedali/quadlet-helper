@@ -66,3 +66,9 @@ func WalkWithSymlinks(root string, walkFn func(path string, info os.FileInfo) er
 
 	return walk(root)
 }
+
+// FileExists checks if a file exists at the given path.
+func FileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}

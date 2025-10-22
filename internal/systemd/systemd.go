@@ -32,9 +32,15 @@ func Stop(unit string) (string, error) {
 	return runSystemctl("stop", unit)
 }
 
-// Stop multiple systemd user units.
+// StopMultiple stops multiple systemd user units.
 func StopMultiple(units []string) (string, error) {
 	args := append([]string{"stop"}, units...)
+	return runSystemctl(args...)
+}
+
+// StartMultiple starts multiple systemd user units.
+func StartMultiple(units []string) (string, error) {
+	args := append([]string{"start"}, units...)
 	return runSystemctl(args...)
 }
 
@@ -64,6 +70,29 @@ func RestartMultiple(units []string) (string, error) {
 // as systemctl status returns a non-zero code for inactive units.
 func Status(units ...string) (string, error) {
 	allArgs := append([]string{"--user", "--no-pager", "status"}, units...)
+	cmd := exec.Command("systemctl", allArgs...)
+	output, err := cmd.CombinedOutput()
+	return string(output), err
+}
+
+// ListTimers lists systemd timers.
+func ListTimers(timer string) (string, error) {
+	allArgs := []string{"--user", "list-timers", timer, "--no-pager"}
+	cmd := exec.Command("systemctl", allArgs...)
+	output, err := cmd.CombinedOutput()
+	return string(output), err
+}
+
+// IsActive checks if a systemd user unit is active.
+func IsActive(unit string) bool {
+	allArgs := []string{"--user", "is-active", unit}
+	cmd := exec.Command("systemctl", allArgs...)
+	return cmd.Run() == nil
+}
+
+// Show gets properties of a systemd user unit.
+func Show(unit, property string) (string, error) {
+	allArgs := []string{"--user", "show", unit, "--property=" + property, "--value"}
 	cmd := exec.Command("systemctl", allArgs...)
 	output, err := cmd.CombinedOutput()
 	return string(output), err

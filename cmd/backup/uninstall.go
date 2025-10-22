@@ -6,6 +6,7 @@ import (
 
 	"github.com/mufeedali/quadlet-helper/internal/backup"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
+	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +20,7 @@ var uninstallCmd = &cobra.Command{
 
 		// Check if actually installed
 		timerPath, _ := backup.GetTimerFilePath(backupName)
-		if !fileExists(timerPath) {
+		if !shared.FileExists(timerPath) {
 			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Backup '%s' is not installed", backupName)))
 			fmt.Println("\nTo install it, use:")
 			fmt.Printf("  qh backup install %s\n", backupName)
@@ -29,11 +30,20 @@ var uninstallCmd = &cobra.Command{
 		fmt.Println(shared.TitleStyle.Render(fmt.Sprintf("Uninstalling backup: %s", backupName)))
 
 		// Stop and disable timer
-		runSystemctl("stop", fmt.Sprintf("%s-backup.timer", backupName))
-		runSystemctl("disable", fmt.Sprintf("%s-backup.timer", backupName))
+		timerName := backup.BackupTimerName(backupName)
+		serviceName := backup.BackupServiceName(backupName)
+
+		if _, err := systemd.Stop(timerName); err != nil {
+			fmt.Println(shared.WarningStyle.Render(fmt.Sprintf("Could not stop timer: %v", err)))
+		}
+		if _, err := systemd.Disable(timerName); err != nil {
+			fmt.Println(shared.WarningStyle.Render(fmt.Sprintf("Could not disable timer: %v", err)))
+		}
 
 		// Stop service if running
-		runSystemctl("stop", fmt.Sprintf("%s-backup.service", backupName))
+		if _, err := systemd.Stop(serviceName); err != nil {
+			fmt.Println(shared.WarningStyle.Render(fmt.Sprintf("Could not stop service: %v", err)))
+		}
 
 		// Remove service file
 		serviceFilePath, _ := backup.GetServiceFilePath(backupName)
@@ -62,7 +72,9 @@ var uninstallCmd = &cobra.Command{
 		}
 
 		// Reload systemd
-		runSystemctl("daemon-reload")
+		if _, err := systemd.DaemonReload(); err != nil {
+			fmt.Println(shared.WarningStyle.Render(fmt.Sprintf("Could not reload systemd: %v", err)))
+		}
 
 		fmt.Println(shared.SuccessStyle.Render("\n✓ Uninstallation complete!"))
 		fmt.Println("\nNote: Configuration file still exists. To remove it, run:")

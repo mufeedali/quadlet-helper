@@ -2,6 +2,7 @@ package backup
 
 import (
 	"github.com/mufeedali/quadlet-helper/internal/backup"
+	"github.com/mufeedali/quadlet-helper/internal/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -39,7 +40,7 @@ func getInstalledBackupCompletions() func(cmd *cobra.Command, args []string, toC
 		var installed []string
 		for _, name := range configs {
 			timerFilePath, _ := backup.GetTimerFilePath(name)
-			if fileExists(timerFilePath) {
+			if shared.FileExists(timerFilePath) {
 				installed = append(installed, name)
 			}
 		}
@@ -65,7 +66,7 @@ func getNotInstalledBackupCompletions() func(cmd *cobra.Command, args []string, 
 		var notInstalled []string
 		for _, name := range configs {
 			timerFilePath, _ := backup.GetTimerFilePath(name)
-			if !fileExists(timerFilePath) {
+			if !shared.FileExists(timerFilePath) {
 				notInstalled = append(notInstalled, name)
 			}
 		}

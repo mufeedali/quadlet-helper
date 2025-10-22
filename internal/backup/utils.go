@@ -1,5 +1,7 @@
 package backup
 
+import "fmt"
+
 // GetDestination returns the destination string for the backup type
 func (c *Config) GetDestination() string {
 	switch c.Type {
@@ -12,4 +14,14 @@ func (c *Config) GetDestination() string {
 	default:
 		return ""
 	}
+}
+
+// BackupTimerName returns the systemd timer name for a backup.
+func BackupTimerName(backupName string) string {
+	return fmt.Sprintf("%s-backup.timer", backupName)
+}
+
+// BackupServiceName returns the systemd service name for a backup.
+func BackupServiceName(backupName string) string {
+	return fmt.Sprintf("%s-backup.service", backupName)
 }

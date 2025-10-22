@@ -42,7 +42,7 @@ var startCmd = &cobra.Command{
 		}
 
 		// Build systemctl args and start all services in one call
-		output, err := systemd.RestartMultiple(services)
+		output, err := systemd.StartMultiple(services)
 		if err != nil {
 			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error starting services: %v\n%s", err, string(output))))
 			os.Exit(1)
