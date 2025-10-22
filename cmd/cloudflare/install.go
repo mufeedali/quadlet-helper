@@ -3,11 +3,10 @@ package cloudflare
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/mufeedali/quadlet-helper/internal/shared"
+	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 )
 
@@ -79,23 +78,24 @@ var installCmd = &cobra.Command{
 		}
 		fmt.Println(shared.CheckMark + " Created " + shared.FilePathStyle.Render(timerFilePath))
 
-		runSystemctl("daemon-reload")
-		runSystemctl("enable", "cloudflare-ip-updater.timer")
-		runSystemctl("start", "cloudflare-ip-updater.timer")
+		if _, err := systemd.DaemonReload(); err != nil {
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error reloading systemd: %v", err)))
+			os.Exit(1)
+		}
+
+		if _, err := systemd.Enable("cloudflare-ip-updater.timer"); err != nil {
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error enabling timer: %v", err)))
+			os.Exit(1)
+		}
+
+		if _, err := systemd.Start("cloudflare-ip-updater.timer"); err != nil {
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error starting timer: %v", err)))
+			os.Exit(1)
+		}
 
 		fmt.Println(shared.SuccessStyle.Render("\n✓ Installation complete!"))
 		fmt.Println(shared.TitleStyle.Render("Timer status:"))
-		runSystemctl("--no-pager", "status", "cloudflare-ip-updater.timer")
+		output, _ := systemd.Status("cloudflare-ip-updater.timer")
+		fmt.Println(output)
 	},
-}
-
-func runSystemctl(args ...string) {
-	allArgs := append([]string{"--user"}, args...)
-	c := exec.Command("systemctl", allArgs...)
-	output, err := c.CombinedOutput()
-	if err != nil {
-		fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error running systemctl %s: %v\n%s", strings.Join(args, " "), err, string(output))))
-		return
-	}
-	fmt.Print(string(output))
 }

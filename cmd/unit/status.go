@@ -2,10 +2,9 @@ package unit
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
 	"strings"
 
+	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 )
 
@@ -22,12 +21,8 @@ var statusCmd = &cobra.Command{
 		}
 
 		// Run systemctl status for all services in one call
-		cmdArgs := append([]string{"--user", "status"}, services...)
-		c := exec.Command("systemctl", cmdArgs...)
-		c.Stdout = os.Stdout
-		c.Stderr = os.Stderr
-		// Status command returns non-zero exit code when service is not running, so we don't exit on error
-		_ = c.Run()
+		output, _ := systemd.Status(services...)
+		fmt.Println(output)
 
 		// Print a short summary line for convenience
 		fmt.Println(strings.Join(services, ", "))

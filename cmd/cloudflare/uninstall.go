@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/mufeedali/quadlet-helper/internal/shared"
+	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 )
 
@@ -22,9 +23,15 @@ var uninstallCmd = &cobra.Command{
 		}
 		systemdUserDir := filepath.Join(home, ".config", "systemd", "user")
 
-		runSystemctl("stop", "cloudflare-ip-updater.timer")
-		runSystemctl("disable", "cloudflare-ip-updater.timer")
-		runSystemctl("stop", "cloudflare-ip-updater.service")
+		if _, err := systemd.Stop("cloudflare-ip-updater.timer"); err != nil {
+			fmt.Println(shared.WarningStyle.Render(fmt.Sprintf("Could not stop timer: %v", err)))
+		}
+		if _, err := systemd.Disable("cloudflare-ip-updater.timer"); err != nil {
+			fmt.Println(shared.WarningStyle.Render(fmt.Sprintf("Could not disable timer: %v", err)))
+		}
+		if _, err := systemd.Stop("cloudflare-ip-updater.service"); err != nil {
+			fmt.Println(shared.WarningStyle.Render(fmt.Sprintf("Could not stop service: %v", err)))
+		}
 
 		serviceFile := filepath.Join(systemdUserDir, "cloudflare-ip-updater.service")
 		if err := os.Remove(serviceFile); err == nil {
@@ -40,7 +47,9 @@ var uninstallCmd = &cobra.Command{
 			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error removing timer file: %v", err)))
 		}
 
-		runSystemctl("daemon-reload")
+		if _, err := systemd.DaemonReload(); err != nil {
+			fmt.Println(shared.WarningStyle.Render(fmt.Sprintf("Could not reload systemd: %v", err)))
+		}
 
 		fmt.Println(shared.SuccessStyle.Render("\n✓ Uninstallation complete!"))
 	},

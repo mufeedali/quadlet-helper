@@ -3,11 +3,11 @@ package unit
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/mufeedali/quadlet-helper/internal/shared"
+	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -59,7 +59,12 @@ var enableCmd = &cobra.Command{
 		}
 
 		if anyChanged {
-			runDaemonReload()
+			fmt.Println("  Running systemctl --user daemon-reload...")
+			if _, err := systemd.DaemonReload(); err != nil {
+				fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error running daemon-reload: %v", err)))
+				os.Exit(1)
+			}
+			fmt.Println(shared.CheckMark + " Daemon reloaded.")
 		}
 
 		if failures > 0 {
@@ -103,15 +108,4 @@ func addInstallSection(content string) (string, bool) {
 WantedBy=multi-user.target default.target
 `
 	return content + installSection, true
-}
-
-func runDaemonReload() {
-	fmt.Println("  Running systemctl --user daemon-reload...")
-	c := exec.Command("systemctl", "--user", "daemon-reload")
-	output, err := c.CombinedOutput()
-	if err != nil {
-		fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error running daemon-reload: %v\n%s", err, string(output))))
-		os.Exit(1)
-	}
-	fmt.Println(shared.CheckMark + " Daemon reloaded.")
 }

@@ -5,13 +5,13 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/mufeedali/quadlet-helper/internal/shared"
+	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
@@ -36,9 +36,9 @@ var runCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		containersDir := viper.GetString("containers-dir")
-		realContainersDir := shared.ResolveContainersDir(containersDir)
-		traefikConfigPath := filepath.Join(realContainersDir, "traefik", "container-config", "traefik", "traefik.yaml")
+		containersPath := viper.GetString("containers-path")
+		realContainersPath := shared.ResolveContainersDir(containersPath)
+		traefikConfigPath := filepath.Join(realContainersPath, "traefik", "container-config", "traefik", "traefik.yaml")
 
 		config, err := readTraefikConfig(traefikConfigPath)
 		if err != nil {
@@ -185,10 +185,8 @@ func writeTraefikConfig(path string, config map[interface{}]interface{}) error {
 
 func restartTraefik() {
 	fmt.Println(shared.TitleStyle.Render("Restarting Traefik container..."))
-	c := exec.Command("systemctl", "--user", "restart", "traefik.container")
-	output, err := c.CombinedOutput()
-	if err != nil {
-		fmt.Println(shared.CrossMark + " " + shared.ErrorStyle.Render(fmt.Sprintf("Failed to restart Traefik: %v\n%s", err, string(output))))
+	if _, err := systemd.Restart("traefik.container"); err != nil {
+		fmt.Println(shared.CrossMark + " " + shared.ErrorStyle.Render(fmt.Sprintf("Failed to restart Traefik: %v", err)))
 		fmt.Println(shared.InfoMark + " Please restart manually: " + "systemctl --user restart traefik.container")
 		return
 	}

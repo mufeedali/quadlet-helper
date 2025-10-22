@@ -3,10 +3,10 @@ package unit
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/mufeedali/quadlet-helper/internal/shared"
+	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 )
 
@@ -27,8 +27,7 @@ var startCmd = &cobra.Command{
 		// Reload systemctl daemon (unless --no-reload)
 		if !noReload {
 			fmt.Println(shared.TitleStyle.Render("Reloading systemctl daemon..."))
-			c := exec.Command("systemctl", "--user", "daemon-reload")
-			output, err := c.CombinedOutput()
+			output, err := systemd.DaemonReload()
 			if err != nil {
 				fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error reloading systemctl daemon: %v\n%s", err, string(output))))
 				fmt.Println(shared.InfoMark + " Please reload manually: " + "systemctl --user daemon-reload")
@@ -43,10 +42,7 @@ var startCmd = &cobra.Command{
 		}
 
 		// Build systemctl args and start all services in one call
-		cmdArgs := []string{"--user", "start"}
-		cmdArgs = append(cmdArgs, services...)
-		c := exec.Command("systemctl", cmdArgs...)
-		output, err := c.CombinedOutput()
+		output, err := systemd.RestartMultiple(services)
 		if err != nil {
 			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error starting services: %v\n%s", err, string(output))))
 			os.Exit(1)

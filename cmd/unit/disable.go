@@ -6,6 +6,7 @@ import (
 	"regexp"
 
 	"github.com/mufeedali/quadlet-helper/internal/shared"
+	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -58,7 +59,12 @@ var disableCmd = &cobra.Command{
 		}
 
 		if anyChanged {
-			runDaemonReload()
+			fmt.Println("  Running systemctl --user daemon-reload...")
+			if _, err := systemd.DaemonReload(); err != nil {
+				fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error running daemon-reload: %v", err)))
+				os.Exit(1)
+			}
+			fmt.Println(shared.CheckMark + " Daemon reloaded.")
 		}
 
 		if failures > 0 {

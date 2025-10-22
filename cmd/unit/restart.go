@@ -3,10 +3,10 @@ package unit
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/mufeedali/quadlet-helper/internal/shared"
+	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 )
 
@@ -27,10 +27,7 @@ var restartCmd = &cobra.Command{
 		fmt.Println(shared.TitleStyle.Render(fmt.Sprintf("Restarting %s...", strings.Join(services, " "))))
 
 		// Stop services first
-		cmdArgs := []string{"--user", "stop"}
-		cmdArgs = append(cmdArgs, services...)
-		c := exec.Command("systemctl", cmdArgs...)
-		output, err := c.CombinedOutput()
+		output, err := systemd.StopMultiple(services)
 		if err != nil {
 			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error stopping services: %v\n%s", err, string(output))))
 			fmt.Println(shared.InfoMark + " Please stop manually: " + "systemctl --user stop " + strings.Join(services, " "))
@@ -44,8 +41,7 @@ var restartCmd = &cobra.Command{
 		// Reload systemctl daemon (unless --no-reload)
 		if !noReload {
 			fmt.Println(shared.TitleStyle.Render("Reloading systemctl daemon..."))
-			c = exec.Command("systemctl", "--user", "daemon-reload")
-			output, err = c.CombinedOutput()
+			output, err = systemd.DaemonReload()
 			if err != nil {
 				fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error reloading systemctl daemon: %v\n%s", err, string(output))))
 				fmt.Println(shared.InfoMark + " Please reload manually: " + "systemctl --user daemon-reload")
@@ -61,10 +57,7 @@ var restartCmd = &cobra.Command{
 
 		// Start services
 		fmt.Println(shared.TitleStyle.Render(fmt.Sprintf("Starting %s...", strings.Join(services, " "))))
-		cmdArgs = []string{"--user", "start"}
-		cmdArgs = append(cmdArgs, services...)
-		c = exec.Command("systemctl", cmdArgs...)
-		output, err = c.CombinedOutput()
+		output, err = systemd.RestartMultiple(services)
 		if err != nil {
 			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error starting services: %v\n%s", err, string(output))))
 			fmt.Println(shared.InfoMark + " Please start manually: " + "systemctl --user start " + strings.Join(services, " "))

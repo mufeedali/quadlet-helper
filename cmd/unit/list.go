@@ -3,13 +3,13 @@ package unit
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
+	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -58,16 +58,18 @@ var listCmd = &cobra.Command{
 						enabledStatus = "✓"
 					}
 
-					activeStatus := getServiceStatus("is-active", serviceName)
+					activeStatus := getServiceStatus(serviceName)
 
 					// Simplify active status to symbols
-					if activeStatus == "active" {
+					switch activeStatus {
+					case "active":
 						activeStatus = "✓"
-					} else if activeStatus == "inactive" || activeStatus == "failed" {
+					case "inactive", "failed":
 						activeStatus = "✗"
-					}
-
-					// Clean up unit type - remove the dot prefix
+					default:
+						output, _ := systemd.Status(serviceName)
+						activeStatus = strings.TrimSpace(output)
+					} // Clean up unit type - remove the dot prefix
 					cleanType := strings.TrimPrefix(ext, ".")
 
 					// Don't show status for units that are typically 'oneshot'
@@ -131,9 +133,8 @@ var listCmd = &cobra.Command{
 	},
 }
 
-func getServiceStatus(command, serviceName string) string {
-	cmd := exec.Command("systemctl", "--user", command, serviceName)
-	output, err := cmd.CombinedOutput()
+func getServiceStatus(serviceName string) string {
+	output, err := systemd.Status(serviceName)
 	if err != nil {
 		// is-enabled returns non-zero for 'disabled', is-active for 'inactive'
 		// We just return the output which is the status word.

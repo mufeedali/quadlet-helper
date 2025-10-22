@@ -3,10 +3,10 @@ package unit
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/mufeedali/quadlet-helper/internal/shared"
+	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 )
 
@@ -25,10 +25,7 @@ var stopCmd = &cobra.Command{
 		fmt.Println(shared.TitleStyle.Render(fmt.Sprintf("Stopping %s...", strings.Join(services, " "))))
 
 		// Build systemctl args and stop all services in one call
-		cmdArgs := []string{"--user", "stop"}
-		cmdArgs = append(cmdArgs, services...)
-		c := exec.Command("systemctl", cmdArgs...)
-		output, err := c.CombinedOutput()
+		output, err := systemd.StopMultiple(services)
 		if err != nil {
 			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error stopping services: %v\n%s", err, string(output))))
 			os.Exit(1)
