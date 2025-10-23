@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/goccy/go-yaml"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
 	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -113,40 +113,43 @@ func readTraefikConfig(path string) (map[interface{}]interface{}, error) {
 	}
 
 	var config map[interface{}]interface{}
-	err = yaml.Unmarshal(data, &config)
+	err = yaml.UnmarshalWithOptions(data, &config, yaml.Strict())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse YAML config:\n%w", err)
 	}
 
 	return config, nil
 }
 
 func updateCloudflareIPsInConfig(config map[interface{}]interface{}, newIPs []string) (bool, map[interface{}]interface{}) {
-	cfIPs, ok := config["cloudflare-ips"].(map[interface{}]interface{})
-	if !ok {
-		fmt.Println(shared.CrossMark + " 'cloudflare-ips' section not found in config")
+	path, err := yaml.PathString("$.cloudflare-ips.trustedIPs")
+	if err != nil {
+		fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error creating YAML path: %v", err)))
 		return false, config
 	}
 
-	currentIPsInterface, ok := cfIPs["trustedIPs"].([]interface{})
-	if !ok {
-		fmt.Println(shared.CrossMark + " 'trustedIPs' section not found in 'cloudflare-ips'")
+	data, err := yaml.MarshalWithOptions(config, yaml.Indent(2))
+	if err != nil {
+		fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error marshaling config: %v", err)))
 		return false, config
 	}
 
 	var currentIPs []string
-	for _, ip := range currentIPsInterface {
-		if ipStr, ok := ip.(string); ok {
-			currentIPs = append(currentIPs, ipStr)
-		} else {
-			fmt.Println(shared.WarningStyle.Render(fmt.Sprintf("Warning: non-string IP found in trustedIPs: %v", ip)))
-		}
+	if err := path.Read(strings.NewReader(string(data)), &currentIPs); err != nil {
+		fmt.Println(shared.CrossMark + " 'cloudflare-ips.trustedIPs' not found in config")
+		return false, config
 	}
 
 	sort.Strings(currentIPs)
 	sort.Strings(newIPs)
 
 	if strings.Join(currentIPs, ",") == strings.Join(newIPs, ",") {
+		return false, config
+	}
+
+	cfIPs, ok := config["cloudflare-ips"].(map[interface{}]interface{})
+	if !ok {
+		fmt.Println(shared.CrossMark + " 'cloudflare-ips' section not found in config")
 		return false, config
 	}
 
@@ -168,9 +171,9 @@ func writeTraefikConfig(path string, config map[interface{}]interface{}) error {
 	}
 	fmt.Println(shared.FolderMark + " Backup created: " + shared.FilePathStyle.Render(backupPath))
 
-	data, err := yaml.Marshal(config)
+	data, err := yaml.MarshalWithOptions(config, yaml.Indent(2), yaml.UseSingleQuote(false))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal YAML: %w", err)
 	}
 
 	err = os.WriteFile(path, data, 0644)

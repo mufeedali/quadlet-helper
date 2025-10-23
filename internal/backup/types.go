@@ -75,18 +75,8 @@ type Notifications struct {
 
 // EmailConfig for email notifications
 type EmailConfig struct {
-	To   string     `yaml:"to"`
-	From string     `yaml:"from"`
-	SMTP SMTPConfig `yaml:"smtp,omitempty"`
-}
-
-// SMTPConfig for SMTP settings
-type SMTPConfig struct {
-	Host         string `yaml:"host"`
-	Port         int    `yaml:"port"`
-	Username     string `yaml:"username"`
-	PasswordFile string `yaml:"password_file"`
-	TLS          bool   `yaml:"tls"`
+	To   string `yaml:"to,omitempty"`
+	From string `yaml.omitempty:"from,omitempty"`
 }
 
 // Hooks for pre/post backup scripts

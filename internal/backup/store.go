@@ -6,16 +6,20 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gopkg.in/yaml.v2"
+	"github.com/goccy/go-yaml"
 )
 
 // GetConfigDir returns the backup configuration directory
 func GetConfigDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("error finding home directory: %w", err)
+	configHome := os.Getenv("XDG_CONFIG_HOME")
+	if configHome == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("error finding home directory: %w", err)
+		}
+		configHome = filepath.Join(home, ".config")
 	}
-	configDir := filepath.Join(home, ".config", "quadlet-helper", "backups")
+	configDir := filepath.Join(configHome, "quadlet-helper", "backups")
 	return configDir, nil
 }
 
@@ -41,8 +45,8 @@ func LoadConfig(name string) (*Config, error) {
 	}
 
 	var config Config
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("error parsing config file: %w", err)
+	if err := yaml.UnmarshalWithOptions(data, &config, yaml.Strict()); err != nil {
+		return nil, fmt.Errorf("error parsing config file:\n%w", err)
 	}
 
 	return &config, nil
@@ -64,7 +68,7 @@ func SaveConfig(config *Config) error {
 		return err
 	}
 
-	data, err := yaml.Marshal(config)
+	data, err := yaml.MarshalWithOptions(config, yaml.Indent(2), yaml.UseSingleQuote(false))
 	if err != nil {
 		return fmt.Errorf("error marshaling config: %w", err)
 	}

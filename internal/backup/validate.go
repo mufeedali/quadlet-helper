@@ -39,18 +39,5 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("schedule is required")
 	}
 
-	// Validate email config if notifications enabled
-	if c.Notifications.Enabled {
-		if c.Notifications.Email.To == "" {
-			return fmt.Errorf("email.to is required when notifications are enabled")
-		}
-		if c.Notifications.Email.SMTP.Host == "" {
-			return fmt.Errorf("email.smtp.host is required when notifications are enabled")
-		}
-		if c.Notifications.Email.SMTP.Port == 0 {
-			return fmt.Errorf("email.smtp.port is required when notifications are enabled")
-		}
-	}
-
 	return nil
 }

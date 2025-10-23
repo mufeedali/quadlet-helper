@@ -199,7 +199,7 @@ func runResticBackup(config *Config, dryRun bool) (string, error) {
 
 	if dryRun {
 		// For dry-run, just check if repository exists
-		cmd := exec.Command("restic", "snapshots", "--last")
+		cmd := exec.Command("restic", "snapshots", "--latest", "1")
 		cmd.Env = env
 		output, err := cmd.CombinedOutput()
 		return string(output), err

@@ -192,38 +192,13 @@ var createCmd = &cobra.Command{
 			config.Notifications.OnFailure = askYesNo(reader, "Notify on failure? (y/n): ")
 			config.Notifications.OnSuccess = askYesNo(reader, "Notify on success? (y/n): ")
 
-			fmt.Print("Email to: ")
+			fmt.Print("Email to (optional, overrides global setting): ")
 			to, _ := reader.ReadString('\n')
 			config.Notifications.Email.To = strings.TrimSpace(to)
 
-			fmt.Print("Email from: ")
+			fmt.Print("Email from (optional, overrides global setting): ")
 			from, _ := reader.ReadString('\n')
 			config.Notifications.Email.From = strings.TrimSpace(from)
-
-			fmt.Print("SMTP host: ")
-			host, _ := reader.ReadString('\n')
-			config.Notifications.Email.SMTP.Host = strings.TrimSpace(host)
-
-			fmt.Print("SMTP port (default 587): ")
-			portStr, _ := reader.ReadString('\n')
-			portStr = strings.TrimSpace(portStr)
-			if portStr == "" {
-				config.Notifications.Email.SMTP.Port = 587
-			} else {
-				if p, err := strconv.Atoi(portStr); err == nil {
-					config.Notifications.Email.SMTP.Port = p
-				}
-			}
-
-			fmt.Print("SMTP username: ")
-			username, _ := reader.ReadString('\n')
-			config.Notifications.Email.SMTP.Username = strings.TrimSpace(username)
-
-			fmt.Print("SMTP password file path: ")
-			pwFile, _ := reader.ReadString('\n')
-			config.Notifications.Email.SMTP.PasswordFile = strings.TrimSpace(pwFile)
-
-			config.Notifications.Email.SMTP.TLS = askYesNo(reader, "Use TLS? (y/n): ")
 		}
 
 		// Validate and save
