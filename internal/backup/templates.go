@@ -8,9 +8,6 @@ import (
 
 // GetServiceTemplate returns the systemd service template for a backup
 func GetServiceTemplate(executablePath, configPath, backupName string, config *Config) string {
-	// Get user's home directory for PATH expansion
-	home, _ := os.UserHomeDir()
-
 	template := `[Unit]
 Description=Backup: %s
 Wants=network-online.target
@@ -21,7 +18,7 @@ Type=oneshot
 ExecStart=%s backup run %s`
 
 	// Prepend user's .local/bin to PATH for tools like restic, rclone installed locally
-	template += fmt.Sprintf("\nEnvironment=PATH=%s/.local/bin:${PATH}", home)
+	template += "\nEnvironment=PATH=%h/.local/bin:%h/.local/share/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 
 	// Add environment variables
 	if len(config.Environment) > 0 {
