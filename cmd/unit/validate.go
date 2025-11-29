@@ -55,7 +55,7 @@ func validateUnit(unitName string) (bool, string) {
 		return false, fmt.Sprintf("Error finding unit: %v", err)
 	}
 
-	serviceName := getServiceName(unitName, quadletFile)
+	serviceName := getServiceNameFromExtension(unitName, filepath.Ext(quadletFile))
 
 	cmd := exec.Command("systemd-analyze", "--user", "--generators=true", "verify", serviceName)
 	output, err := cmd.CombinedOutput()
@@ -116,31 +116,4 @@ func validateAllUnits() bool {
 	}
 
 	return failedCount == 0
-}
-
-func getServiceName(unitName, quadletFile string) string {
-	ext := filepath.Ext(quadletFile)
-	serviceName := unitName + ".service"
-	switch ext {
-	case ".network":
-		serviceName = unitName + "-network.service"
-	case ".volume":
-		serviceName = unitName + "-volume.service"
-	case ".pod":
-		serviceName = unitName + "-pod.service"
-	}
-	return serviceName
-}
-
-func isQuadletUnit(ext string) bool {
-	validExtensions := map[string]bool{
-		".container": true,
-		".pod":       true,
-		".network":   true,
-		".volume":    true,
-		".kube":      true,
-		".image":     true,
-		".build":     true,
-	}
-	return validExtensions[ext]
 }

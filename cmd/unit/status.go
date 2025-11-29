@@ -14,10 +14,11 @@ var statusCmd = &cobra.Command{
 	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: unitCompletionFunc,
 	Run: func(cmd *cobra.Command, args []string) {
-		// Build service names from provided unit names
-		services := make([]string, len(args))
-		for i, unitName := range args {
-			services[i] = fmt.Sprintf("%s.service", unitName)
+		// Resolve service names from provided unit names
+		services, err := resolveServiceNames(args)
+		if err != nil {
+			fmt.Printf("Error resolving service names: %v\n", err)
+			return
 		}
 
 		// Run systemctl status for all services in one call

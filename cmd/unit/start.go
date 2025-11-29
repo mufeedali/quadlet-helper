@@ -16,10 +16,11 @@ var startCmd = &cobra.Command{
 	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: unitCompletionFunc,
 	Run: func(cmd *cobra.Command, args []string) {
-		// Build service names from provided unit names
-		services := make([]string, len(args))
-		for i, unitName := range args {
-			services[i] = fmt.Sprintf("%s.service", unitName)
+		// Resolve service names from provided unit names
+		services, err := resolveServiceNames(args)
+		if err != nil {
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error resolving service names: %v", err)))
+			os.Exit(1)
 		}
 
 		fmt.Println(shared.TitleStyle.Render(fmt.Sprintf("Starting %s...", strings.Join(services, " "))))

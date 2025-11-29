@@ -40,16 +40,7 @@ var listCmd = &cobra.Command{
 					foundAny = true
 					unitName := strings.TrimSuffix(info.Name(), ext)
 
-					serviceName := unitName + ".service"
-					// Adjust service name for specific unit types as per quadlet convention
-					switch ext {
-					case ".network":
-						serviceName = unitName + "-network.service"
-					case ".volume":
-						serviceName = unitName + "-volume.service"
-					case ".pod":
-						serviceName = unitName + "-pod.service"
-					}
+					serviceName := getServiceNameFromExtension(unitName, ext)
 
 					// Check if unit is enabled by reading the file
 					enabledStatus := "✗"

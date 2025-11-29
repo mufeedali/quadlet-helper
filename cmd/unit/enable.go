@@ -3,7 +3,6 @@ package unit
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/mufeedali/quadlet-helper/internal/shared"
@@ -75,28 +74,6 @@ var enableCmd = &cobra.Command{
 		// Report overall success (if nothing changed, individual warnings were already printed)
 		fmt.Println(shared.SuccessStyle.Render(fmt.Sprintf("✓ Successfully processed %d unit(s)", len(args))))
 	},
-}
-
-func findQuadletFile(dir, unitName string) (string, error) {
-	var foundPath string
-	err := shared.WalkWithSymlinks(dir, func(path string, info os.FileInfo) error {
-		if !info.IsDir() {
-			baseName := filepath.Base(path)
-			ext := filepath.Ext(baseName)
-			if baseName[:len(baseName)-len(ext)] == unitName {
-				foundPath = path
-				return filepath.SkipDir // Stop searching
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return "", err
-	}
-	if foundPath == "" {
-		return "", fmt.Errorf("quadlet file for unit '%s' not found", unitName)
-	}
-	return foundPath, nil
 }
 
 func addInstallSection(content string) (string, bool) {

@@ -18,7 +18,7 @@ Type=oneshot
 ExecStart=%s backup run %s`
 
 	// Prepend user's .local/bin to PATH for tools like restic, rclone installed locally
-	template += "\nEnvironment=PATH=%h/.local/bin:%h/.local/share/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+	template += "\nEnvironment=PATH=%%h/.local/bin:%%h/.local/share/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 
 	// Add environment variables
 	if len(config.Environment) > 0 {
