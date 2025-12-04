@@ -4,10 +4,10 @@ go 1.25.1
 
 require (
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/goccy/go-yaml v1.18.0
-	github.com/spf13/cobra v1.10.1
+	github.com/goccy/go-yaml v1.19.0
+	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
-	golang.org/x/text v0.30.0
+	golang.org/x/text v0.31.0
 )
 
 require (
