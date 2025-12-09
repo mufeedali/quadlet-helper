@@ -28,14 +28,14 @@ func ParseSchedule(schedule string) (string, error) {
 	}
 
 	// Parse "daily HH:MM" format
-	if strings.HasPrefix(schedule, "daily ") {
-		time := strings.TrimPrefix(schedule, "daily ")
+	if after, ok := strings.CutPrefix(schedule, "daily "); ok {
+		time := after
 		return fmt.Sprintf("*-*-* %s:00", time), nil
 	}
 
 	// Parse "weekly DAY HH:MM" format
-	if strings.HasPrefix(schedule, "weekly ") {
-		parts := strings.Fields(strings.TrimPrefix(schedule, "weekly "))
+	if after, ok := strings.CutPrefix(schedule, "weekly "); ok {
+		parts := strings.Fields(after)
 		if len(parts) == 2 {
 			caser := cases.Title(language.English)
 			day := caser.String(parts[0])

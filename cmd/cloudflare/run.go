@@ -102,7 +102,7 @@ func fetchIPs(url string) ([]string, error) {
 	return strings.Split(strings.TrimSpace(string(body)), "\n"), nil
 }
 
-func readTraefikConfig(path string) (map[interface{}]interface{}, error) {
+func readTraefikConfig(path string) (map[any]any, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil, fmt.Errorf("traefik config not found: %s", path)
 	}
@@ -112,7 +112,7 @@ func readTraefikConfig(path string) (map[interface{}]interface{}, error) {
 		return nil, err
 	}
 
-	var config map[interface{}]interface{}
+	var config map[any]any
 	err = yaml.UnmarshalWithOptions(data, &config, yaml.Strict())
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse YAML config:\n%w", err)
@@ -121,7 +121,7 @@ func readTraefikConfig(path string) (map[interface{}]interface{}, error) {
 	return config, nil
 }
 
-func updateCloudflareIPsInConfig(config map[interface{}]interface{}, newIPs []string) (bool, map[interface{}]interface{}) {
+func updateCloudflareIPsInConfig(config map[any]any, newIPs []string) (bool, map[any]any) {
 	path, err := yaml.PathString("$.cloudflare-ips.trustedIPs")
 	if err != nil {
 		fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error creating YAML path: %v", err)))
@@ -147,13 +147,13 @@ func updateCloudflareIPsInConfig(config map[interface{}]interface{}, newIPs []st
 		return false, config
 	}
 
-	cfIPs, ok := config["cloudflare-ips"].(map[interface{}]interface{})
+	cfIPs, ok := config["cloudflare-ips"].(map[any]any)
 	if !ok {
 		fmt.Println(shared.CrossMark + " 'cloudflare-ips' section not found in config")
 		return false, config
 	}
 
-	var newIPsInterface []interface{}
+	var newIPsInterface []any
 	for _, ip := range newIPs {
 		newIPsInterface = append(newIPsInterface, ip)
 	}
@@ -164,7 +164,7 @@ func updateCloudflareIPsInConfig(config map[interface{}]interface{}, newIPs []st
 	return true, config
 }
 
-func writeTraefikConfig(path string, config map[interface{}]interface{}) error {
+func writeTraefikConfig(path string, config map[any]any) error {
 	backupPath := fmt.Sprintf("%s.backup.%s", path, time.Now().Format("20060102_150405"))
 	if err := os.Rename(path, backupPath); err != nil {
 		return fmt.Errorf("failed to create backup: %v", err)

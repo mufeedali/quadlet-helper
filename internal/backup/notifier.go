@@ -172,11 +172,11 @@ func sendEmail(emailConf config.EmailConfig, password, from, to, subject, body s
 	fromAddr := extractEmailAddress(from)
 
 	// Prepare message with HTML content type
-	msg := []byte(fmt.Sprintf("From: %s\r\n"+
+	msg := fmt.Appendf(nil, "From: %s\r\n"+
 		"To: %s\r\n"+
 		"Subject: %s\r\n"+
 		"MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"+
-		"%s\r\n", from, to, subject, body))
+		"%s\r\n", from, to, subject, body)
 
 	addr := fmt.Sprintf("%s:%d", emailConf.Host, emailConf.Port)
 

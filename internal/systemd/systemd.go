@@ -100,8 +100,8 @@ func ListActiveServices() ([]string, error) {
 	}
 
 	var services []string
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(output), "\n")
+	for line := range lines {
 		fields := strings.Fields(line)
 		if len(fields) > 0 {
 			services = append(services, fields[0])
