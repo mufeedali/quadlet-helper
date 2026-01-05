@@ -59,7 +59,7 @@ func Restart(unit string) (string, error) {
 	return runSystemctl("restart", unit)
 }
 
-// Restart multiple systemd user units.
+// RestartMultiple restarts multiple systemd user units.
 func RestartMultiple(units []string) (string, error) {
 	args := append([]string{"restart"}, units...)
 	return runSystemctl(args...)

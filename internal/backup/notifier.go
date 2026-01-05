@@ -210,7 +210,7 @@ func sendEmailTLS(addr string, auth smtp.Auth, from string, to []string, msg []b
 	if err == nil {
 		client, err = smtp.NewClient(conn, serverName)
 		if err != nil {
-			conn.Close()
+			_ = conn.Close()
 			return fmt.Errorf("failed to create SMTP client: %w", err)
 		}
 	} else {
@@ -221,11 +221,11 @@ func sendEmailTLS(addr string, auth smtp.Auth, from string, to []string, msg []b
 		}
 
 		if err = client.StartTLS(tlsConfig); err != nil {
-			client.Close()
+			_ = client.Close()
 			return fmt.Errorf("failed to start TLS: %w", err)
 		}
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Authenticate
 	if auth != nil {

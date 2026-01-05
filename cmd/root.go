@@ -51,13 +51,13 @@ func init() {
 	rootCmd.PersistentFlags().String("email-from", "", "Default from address for email notifications")
 	rootCmd.PersistentFlags().String("email-to", "", "Default to address for email notifications")
 
-	viper.BindPFlag("email.host", rootCmd.PersistentFlags().Lookup("email-host"))
-	viper.BindPFlag("email.port", rootCmd.PersistentFlags().Lookup("email-port"))
-	viper.BindPFlag("email.user", rootCmd.PersistentFlags().Lookup("email-user"))
-	viper.BindPFlag("email.passwordfile", rootCmd.PersistentFlags().Lookup("email-password-file"))
-	viper.BindPFlag("email.tls", rootCmd.PersistentFlags().Lookup("email-tls"))
-	viper.BindPFlag("email.from", rootCmd.PersistentFlags().Lookup("email-from"))
-	viper.BindPFlag("email.to", rootCmd.PersistentFlags().Lookup("email-to"))
+	_ = viper.BindPFlag("email.host", rootCmd.PersistentFlags().Lookup("email-host"))
+	_ = viper.BindPFlag("email.port", rootCmd.PersistentFlags().Lookup("email-port"))
+	_ = viper.BindPFlag("email.user", rootCmd.PersistentFlags().Lookup("email-user"))
+	_ = viper.BindPFlag("email.passwordfile", rootCmd.PersistentFlags().Lookup("email-password-file"))
+	_ = viper.BindPFlag("email.tls", rootCmd.PersistentFlags().Lookup("email-tls"))
+	_ = viper.BindPFlag("email.from", rootCmd.PersistentFlags().Lookup("email-from"))
+	_ = viper.BindPFlag("email.to", rootCmd.PersistentFlags().Lookup("email-to"))
 
 	// Add subcommands
 	rootCmd.AddCommand(backup.BackupCmd)

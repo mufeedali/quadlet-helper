@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -269,7 +270,7 @@ func runRcloneBackup(config *Config, dryRun bool) (string, error) {
 		// For multiple sources, we'll backup each separately
 		var allOutput strings.Builder
 		for _, source := range config.Source {
-			srcArgs := append([]string{}, args...)
+			srcArgs := slices.Clone(args)
 			srcArgs = append(srcArgs, source, filepath.Join(config.Destination.Remote, filepath.Base(source)))
 
 			cmd := exec.Command("rclone", srcArgs...)

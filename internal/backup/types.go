@@ -76,7 +76,7 @@ type Notifications struct {
 // EmailConfig for email notifications
 type EmailConfig struct {
 	To   string `yaml:"to,omitempty"`
-	From string `yaml.omitempty:"from,omitempty"`
+	From string `yaml:"from,omitempty"`
 }
 
 // Hooks for pre/post backup scripts
