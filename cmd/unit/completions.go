@@ -1,7 +1,7 @@
 package unit
 
 import (
-	"os"
+	"io/fs"
 	"path/filepath"
 	"strings"
 
@@ -18,16 +18,20 @@ func unitCompletionFunc(cmd *cobra.Command, args []string, toComplete string) ([
 
 	var completions []string
 
-	err := shared.WalkWithSymlinks(realContainersPath, func(path string, info os.FileInfo) error {
-		if !info.IsDir() {
-			ext := filepath.Ext(info.Name())
-			if isQuadletUnit(ext) {
-				unitName := strings.TrimSuffix(info.Name(), ext)
-				// Add to completions if it matches the currently typed prefix
-				if strings.HasPrefix(unitName, toComplete) {
-					completions = append(completions, unitName)
-				}
-			}
+	err := shared.WalkWithSymlinks(realContainersPath, func(path string, d fs.DirEntry) error {
+		if d.IsDir() {
+			return nil
+		}
+
+		ext := filepath.Ext(d.Name())
+		if !isQuadletUnit(ext) {
+			return nil
+		}
+
+		unitName := strings.TrimSuffix(d.Name(), ext)
+		// Add to completions if it matches the currently typed prefix
+		if strings.HasPrefix(unitName, toComplete) {
+			completions = append(completions, unitName)
 		}
 		return nil
 	})
@@ -58,11 +62,11 @@ func activeUnitCompletionFunc(cmd *cobra.Command, args []string, toComplete stri
 
 	var completions []string
 
-	err = shared.WalkWithSymlinks(realContainersPath, func(path string, info os.FileInfo) error {
-		if !info.IsDir() {
-			ext := filepath.Ext(info.Name())
+	err = shared.WalkWithSymlinks(realContainersPath, func(path string, d fs.DirEntry) error {
+		if !d.IsDir() {
+			ext := filepath.Ext(d.Name())
 			if isQuadletUnit(ext) {
-				unitName := strings.TrimSuffix(info.Name(), ext)
+				unitName := strings.TrimSuffix(d.Name(), ext)
 
 				serviceName := getServiceNameFromExtension(unitName, ext)
 

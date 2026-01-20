@@ -2,6 +2,7 @@ package shared
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -20,33 +21,32 @@ func ResolveContainersDir(containersDir string) string {
 // WalkWithSymlinks walks a directory tree following symlinks.
 // It prevents infinite loops by tracking visited directories.
 // The walkFn is called for each file and directory found.
-func WalkWithSymlinks(root string, walkFn func(path string, info os.FileInfo) error) error {
+func WalkWithSymlinks(root string, walkFn func(path string, d fs.DirEntry) error) error {
 	visited := make(map[string]bool)
 
 	var walk func(string) error
 	walk = func(currentRoot string) error {
-		return filepath.Walk(currentRoot, func(path string, info os.FileInfo, err error) error {
+		return filepath.WalkDir(currentRoot, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
 
-			// Get real path to detect circular symlinks
-			realPath, err := filepath.EvalSymlinks(path)
-			if err != nil {
-				realPath = path
-			}
+			// We only resolve paths for directories to detect loops.
+			// Regular files and symlinks to files are processed as-is (allowing duplicates/aliases).
+			if d.IsDir() {
+				realPath, err := filepath.EvalSymlinks(path)
+				if err != nil {
+					realPath = path
+				}
 
-			// Skip if already visited (prevents infinite loops)
-			if visited[realPath] {
-				if info.IsDir() {
+				if visited[realPath] {
 					return filepath.SkipDir
 				}
-				return nil
+				visited[realPath] = true
 			}
-			visited[realPath] = true
 
-			// If it's a symlink to a directory, follow it
-			if info.Mode()&os.ModeSymlink != 0 {
+			// If it's a symlink, checks if it points to a directory we should traverse
+			if d.Type()&os.ModeSymlink != 0 {
 				target, err := os.Readlink(path)
 				if err == nil {
 					// Make absolute if relative
@@ -55,12 +55,14 @@ func WalkWithSymlinks(root string, walkFn func(path string, info os.FileInfo) er
 					}
 					targetInfo, err := os.Stat(target)
 					if err == nil && targetInfo.IsDir() {
-						return walk(target)
+						// Recurse into the symlinked directory
+						// We ignore the error from walk() to continue processing the current directory
+						_ = walk(target)
 					}
 				}
 			}
 
-			return walkFn(path, info)
+			return walkFn(path, d)
 		})
 	}
 

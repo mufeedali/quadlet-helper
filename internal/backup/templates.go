@@ -4,44 +4,46 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // GetServiceTemplate returns the systemd service template for a backup
 func GetServiceTemplate(executablePath, configPath, backupName string, config *Config) string {
-	template := `[Unit]
+	var template strings.Builder
+	template.WriteString(`[Unit]
 Description=Backup: %s
 Wants=network-online.target
 After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=%s backup run %s`
+ExecStart=%s backup run %s`)
 
 	// Prepend user's .local/bin to PATH for tools like restic, rclone installed locally
-	template += "\nEnvironment=PATH=%%h/.local/bin:%%h/.local/share/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+	template.WriteString("\nEnvironment=PATH=%%h/.local/bin:%%h/.local/share/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin")
 
 	// Add environment variables
 	if len(config.Environment) > 0 {
 		for _, env := range config.Environment {
-			template += fmt.Sprintf("\nEnvironment=%s", env)
+			template.WriteString(fmt.Sprintf("\nEnvironment=%s", env))
 		}
 	}
 
-	template += `
+	template.WriteString(`
 StandardOutput=journal
-StandardError=journal`
+StandardError=journal`)
 
 	// Add verification step if enabled
 	if config.Verification.Enabled && config.Verification.AutoVerify {
-		template += fmt.Sprintf("\nExecStartPost=%s backup verify %s", executablePath, backupName)
+		template.WriteString(fmt.Sprintf("\nExecStartPost=%s backup verify %s", executablePath, backupName))
 	}
 
 	// Add cleanup step if retention is configured
 	if config.Retention.KeepDays > 0 || config.Retention.KeepDaily > 0 {
-		template += fmt.Sprintf("\nExecStopPost=%s backup cleanup %s", executablePath, backupName)
+		template.WriteString(fmt.Sprintf("\nExecStopPost=%s backup cleanup %s", executablePath, backupName))
 	}
 
-	return fmt.Sprintf(template, backupName, executablePath, backupName)
+	return fmt.Sprintf(template.String(), backupName, executablePath, backupName)
 }
 
 // GetTimerTemplate returns the systemd timer template for a backup

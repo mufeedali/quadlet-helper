@@ -90,6 +90,34 @@ func IsActive(unit string) bool {
 	return cmd.Run() == nil
 }
 
+// IsActiveMultiple checks if multiple systemd user units are active.
+// Returns a slice of active statuses corresponding to the input units.
+func IsActiveMultiple(units []string) ([]bool, error) {
+	if len(units) == 0 {
+		return nil, nil
+	}
+
+	allArgs := append([]string{"--user", "is-active"}, units...)
+	cmd := exec.Command("systemctl", allArgs...)
+	output, _ := cmd.CombinedOutput()
+
+	// Note: systemctl is-active returns non-zero exit code if any unit is inactive
+	// but still outputs status for each unit, so we ignore the error and parse output
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	result := make([]bool, len(units))
+
+	// Each line corresponds to a unit in the same order as the input
+	for i := range units {
+		if i < len(lines) {
+			// "active" means the unit is running
+			result[i] = strings.TrimSpace(lines[i]) == "active"
+		}
+	}
+
+	return result, nil
+}
+
 // ListActiveServices returns a list of all active systemd user services.
 func ListActiveServices() ([]string, error) {
 	allArgs := []string{"--user", "list-units", "--type=service", "--state=active", "--no-legend", "--plain"}

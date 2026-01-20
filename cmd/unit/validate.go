@@ -2,6 +2,7 @@ package unit
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -76,12 +77,12 @@ func validateAllUnits() bool {
 	var validCount, failedCount int
 	foundAny := false
 
-	err := shared.WalkWithSymlinks(realContainersPath, func(path string, info os.FileInfo) error {
-		if !info.IsDir() {
-			ext := filepath.Ext(info.Name())
+	err := shared.WalkWithSymlinks(realContainersPath, func(path string, d fs.DirEntry) error {
+		if !d.IsDir() {
+			ext := filepath.Ext(d.Name())
 			if isQuadletUnit(ext) {
 				foundAny = true
-				unitName := strings.TrimSuffix(info.Name(), ext)
+				unitName := strings.TrimSuffix(d.Name(), ext)
 				ok, output := validateUnit(unitName)
 				if ok {
 					fmt.Println(shared.SuccessStyle.Render(fmt.Sprintf("  ✓ %s", unitName)))

@@ -2,7 +2,7 @@ package unit
 
 import (
 	"fmt"
-	"os"
+	"io/fs"
 	"path/filepath"
 
 	"github.com/mufeedali/quadlet-helper/internal/shared"
@@ -61,8 +61,8 @@ func getServiceNameFromExtension(unitName, ext string) string {
 // findQuadletFile searches for a quadlet file with the given unit name in the directory.
 func findQuadletFile(dir, unitName string) (string, error) {
 	var foundPath string
-	err := shared.WalkWithSymlinks(dir, func(path string, info os.FileInfo) error {
-		if !info.IsDir() {
+	err := shared.WalkWithSymlinks(dir, func(path string, d fs.DirEntry) error {
+		if !d.IsDir() {
 			baseName := filepath.Base(path)
 			ext := filepath.Ext(baseName)
 			// Check if the file matches the unit name (ignoring extension)

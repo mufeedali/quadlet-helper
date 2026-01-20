@@ -3,6 +3,7 @@ package generate
 import (
 	"bufio"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,8 +27,8 @@ and creates a corresponding .env.example file for each, stripping the values.`,
 		foundAny := false
 		hasErrors := false
 
-		err := shared.WalkWithSymlinks(realContainersPath, func(path string, info os.FileInfo) error {
-			if !info.IsDir() && info.Name() == ".env" {
+		err := shared.WalkWithSymlinks(realContainersPath, func(path string, d fs.DirEntry) error {
+			if !d.IsDir() && d.Name() == ".env" {
 				foundAny = true
 				fmt.Println("  -> Found: " + shared.FilePathStyle.Render(path))
 				err := processEnvFile(path)
