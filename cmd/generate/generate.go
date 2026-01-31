@@ -11,6 +11,7 @@ var GenerateCmd = &cobra.Command{
 }
 
 func init() {
+	GenerateCmd.PersistentFlags().Bool("hook", false, "Exit 1 if any files were changed (for git hooks)")
 	GenerateCmd.AddCommand(envCmd)
 	GenerateCmd.AddCommand(traefikCmd)
 }

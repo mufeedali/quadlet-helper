@@ -40,14 +40,21 @@ like email addresses and network names, and creates a traefik.yaml.example file.
 
 		sanitizedContent := sanitizeTraefikConfig(string(content))
 
-		err = os.WriteFile(exampleConfigPath, []byte(sanitizedContent), 0644)
-		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error writing example file: %v", err)))
-			os.Exit(1)
+		existing, err := os.ReadFile(exampleConfigPath)
+		modified := false
+		if err != nil || string(existing) != sanitizedContent {
+			err = os.WriteFile(exampleConfigPath, []byte(sanitizedContent), 0644)
+			if err != nil {
+				fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error writing example file: %v", err)))
+				os.Exit(1)
+			}
+			fmt.Println(shared.SuccessStyle.Render("     Generated: ") + shared.FilePathStyle.Render(exampleConfigPath))
+			modified = true
 		}
 
-		fmt.Println(shared.SuccessStyle.Render("     Generated: ") + shared.FilePathStyle.Render(exampleConfigPath))
 		fmt.Println(shared.TitleStyle.Render("\nGeneration complete."))
+
+		ExitIfHookMode(c, modified)
 	},
 }
 

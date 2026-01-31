@@ -62,19 +62,23 @@ func getServiceNameFromExtension(unitName, ext string) string {
 func findQuadletFile(dir, unitName string) (string, error) {
 	var foundPath string
 	err := shared.WalkWithSymlinks(dir, func(path string, d fs.DirEntry) error {
-		if !d.IsDir() {
-			baseName := filepath.Base(path)
-			ext := filepath.Ext(baseName)
-			// Check if the file matches the unit name (ignoring extension)
-			if len(baseName) > len(ext) && baseName[:len(baseName)-len(ext)] == unitName {
-				// Verify it's a valid quadlet extension
-				if isQuadletUnit(ext) {
-					foundPath = path
-					return filepath.SkipDir // Stop searching
-				}
-			}
+		if d.IsDir() {
+			return nil
 		}
-		return nil
+		baseName := filepath.Base(path)
+		ext := filepath.Ext(baseName)
+		// Check if the file matches the unit name (ignoring extension)
+		if len(baseName) <= len(ext) || baseName[:len(baseName)-len(ext)] != unitName {
+			return nil
+		}
+
+		// Verify it's a valid quadlet extension
+		if !isQuadletUnit(ext) {
+			return nil
+		}
+
+		foundPath = path
+		return filepath.SkipDir // Stop searching
 	})
 	if err != nil {
 		return "", err

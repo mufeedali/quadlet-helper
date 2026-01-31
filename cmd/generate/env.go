@@ -26,17 +26,24 @@ and creates a corresponding .env.example file for each, stripping the values.`,
 
 		foundAny := false
 		hasErrors := false
+		modifiedAny := false
 
 		err := shared.WalkWithSymlinks(realContainersPath, func(path string, d fs.DirEntry) error {
-			if !d.IsDir() && d.Name() == ".env" {
-				foundAny = true
-				fmt.Println("  -> Found: " + shared.FilePathStyle.Render(path))
-				err := processEnvFile(path)
-				if err != nil {
-					hasErrors = true
-					fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("     Error processing %s: %v", path, err)))
-				}
+			if d.IsDir() || d.Name() != ".env" {
+				return nil
 			}
+
+			foundAny = true
+			fmt.Println("  -> Found: " + shared.FilePathStyle.Render(path))
+			modified, err := processEnvFile(path)
+			if err != nil {
+				hasErrors = true
+				fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("     Error processing %s: %v", path, err)))
+			}
+			if modified {
+				modifiedAny = true
+			}
+
 			return nil
 		})
 
@@ -55,53 +62,54 @@ and creates a corresponding .env.example file for each, stripping the values.`,
 		}
 
 		fmt.Println(shared.TitleStyle.Render("\nGeneration complete."))
+
+		ExitIfHookMode(c, modifiedAny)
 	},
 }
 
-func processEnvFile(path string) error {
+func processEnvFile(path string) (bool, error) {
 	inFile, err := os.Open(path)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() {
 		_ = inFile.Close()
 	}()
 
-	exampleFilePath := filepath.Join(filepath.Dir(path), ".env.example")
-	outFile, err := os.Create(exampleFilePath)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = outFile.Close()
-	}()
-
+	var builder strings.Builder
 	scanner := bufio.NewScanner(inFile)
 	for scanner.Scan() {
 		line := scanner.Text()
 		strippedLine := strings.TrimSpace(line)
 
 		if strippedLine == "" || strings.HasPrefix(strippedLine, "#") {
-			_, err := outFile.WriteString(line + "\n")
-			if err != nil {
-				return err
-			}
+			builder.WriteString(line + "\n")
 			continue
 		}
 
 		if strings.Contains(strippedLine, "=") {
 			key := strings.Split(strippedLine, "=")[0]
-			_, err := outFile.WriteString(key + "=\n")
-			if err != nil {
-				return err
-			}
+			builder.WriteString(key + "=\n")
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return err
+		return false, err
+	}
+
+	exampleContent := builder.String()
+	exampleFilePath := filepath.Join(filepath.Dir(path), ".env.example")
+
+	existingContent, err := os.ReadFile(exampleFilePath)
+	if err == nil && string(existingContent) == exampleContent {
+		return false, nil
+	}
+
+	err = os.WriteFile(exampleFilePath, []byte(exampleContent), 0644)
+	if err != nil {
+		return false, err
 	}
 
 	fmt.Println(shared.SuccessStyle.Render("     Generated: ") + shared.FilePathStyle.Render(exampleFilePath))
-	return nil
+	return true, nil
 }

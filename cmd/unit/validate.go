@@ -78,25 +78,31 @@ func validateAllUnits() bool {
 	foundAny := false
 
 	err := shared.WalkWithSymlinks(realContainersPath, func(path string, d fs.DirEntry) error {
-		if !d.IsDir() {
-			ext := filepath.Ext(d.Name())
-			if isQuadletUnit(ext) {
-				foundAny = true
-				unitName := strings.TrimSuffix(d.Name(), ext)
-				ok, output := validateUnit(unitName)
-				if ok {
-					fmt.Println(shared.SuccessStyle.Render(fmt.Sprintf("  ✓ %s", unitName)))
-					validCount++
-				} else {
-					fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("  ✗ %s", unitName)))
-					// Indent the error output for clarity
-					for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
-						fmt.Printf("    %s\n", line)
-					}
-					failedCount++
-				}
-			}
+		if d.IsDir() {
+			return nil
 		}
+
+		ext := filepath.Ext(d.Name())
+		if !isQuadletUnit(ext) {
+			return nil
+		}
+
+		foundAny = true
+		unitName := strings.TrimSuffix(d.Name(), ext)
+		ok, output := validateUnit(unitName)
+		if ok {
+			fmt.Println(shared.SuccessStyle.Render(fmt.Sprintf("  ✓ %s", unitName)))
+			validCount++
+			return nil
+		}
+
+		fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("  ✗ %s", unitName)))
+		// Indent the error output for clarity
+		for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
+			fmt.Printf("    %s\n", line)
+		}
+		failedCount++
+
 		return nil
 	})
 

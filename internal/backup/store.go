@@ -98,10 +98,12 @@ func ListConfigs() ([]string, error) {
 
 	var configs []string
 	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".yaml") {
-			name := strings.TrimSuffix(entry.Name(), ".yaml")
-			configs = append(configs, name)
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
+			continue
 		}
+
+		name := strings.TrimSuffix(entry.Name(), ".yaml")
+		configs = append(configs, name)
 	}
 
 	return configs, nil
