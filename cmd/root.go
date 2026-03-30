@@ -16,8 +16,7 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "qh",
 	Short: "A helper for quadlet containers",
-	Long: `qh is a command-line tool to help manage quadlet-based container setups.
-It provides utilities for generating example files and managing services like the Cloudflare IP updater.`,
+	Long:  `qh is a tool for managing quad-bucket.`,
 }
 
 func Execute() {
