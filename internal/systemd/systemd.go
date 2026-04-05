@@ -84,10 +84,31 @@ func ListTimers(timer string) (string, error) {
 }
 
 // IsActive checks if a systemd user unit is active.
-func IsActive(unit string) bool {
+func IsActive(unit string) (bool, error) {
 	allArgs := []string{"--user", "is-active", unit}
 	cmd := exec.Command("systemctl", allArgs...)
-	return cmd.Run() == nil
+	output, err := cmd.CombinedOutput()
+	return parseIsActiveResult(unit, string(output), err)
+}
+
+func parseIsActiveResult(unit, output string, err error) (bool, error) {
+	status := strings.TrimSpace(output)
+	switch status {
+	case "active":
+		return true, nil
+	case "inactive", "failed", "activating", "deactivating", "reloading", "refreshing", "maintenance", "unknown", "not-found":
+		return false, nil
+	case "":
+		if err != nil {
+			return false, fmt.Errorf("error checking active state for %s: %w", unit, err)
+		}
+		return false, fmt.Errorf("unexpected empty active state for %s", unit)
+	default:
+		if err != nil {
+			return false, fmt.Errorf("error checking active state for %s: %w\n%s", unit, err, status)
+		}
+		return false, fmt.Errorf("unexpected active state for %s: %s", unit, status)
+	}
 }
 
 // IsActiveMultiple checks if multiple systemd user units are active.
@@ -99,20 +120,38 @@ func IsActiveMultiple(units []string) ([]bool, error) {
 
 	allArgs := append([]string{"--user", "is-active"}, units...)
 	cmd := exec.Command("systemctl", allArgs...)
-	output, _ := cmd.CombinedOutput()
+	output, err := cmd.CombinedOutput()
+	return parseIsActiveMultipleResult(units, string(output), err)
+}
 
-	// Note: systemctl is-active returns non-zero exit code if any unit is inactive
-	// but still outputs status for each unit, so we ignore the error and parse output
+func parseIsActiveMultipleResult(units []string, output string, err error) ([]bool, error) {
+	trimmedOutput := strings.TrimSpace(output)
+	if trimmedOutput == "" {
+		if err != nil {
+			return nil, fmt.Errorf("error checking active state for units: %w", err)
+		}
+		return nil, fmt.Errorf("unexpected empty active state output")
+	}
 
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	lines := strings.Split(trimmedOutput, "\n")
+	if len(lines) != len(units) {
+		if err != nil {
+			return nil, fmt.Errorf("error checking active state for units: %w\n%s", err, trimmedOutput)
+		}
+		return nil, fmt.Errorf("unexpected number of active states: got %d, want %d\n%s", len(lines), len(units), trimmedOutput)
+	}
+
 	result := make([]bool, len(units))
 
-	// Each line corresponds to a unit in the same order as the input
-	for i := range units {
-		if i < len(lines) {
-			// "active" means the unit is running
-			result[i] = strings.TrimSpace(lines[i]) == "active"
+	for i, unit := range units {
+		active, parseErr := parseIsActiveResult(unit, lines[i], nil)
+		if parseErr != nil {
+			if err != nil {
+				return nil, fmt.Errorf("error checking active state for %s: %w\n%s", unit, err, strings.TrimSpace(lines[i]))
+			}
+			return nil, parseErr
 		}
+		result[i] = active
 	}
 
 	return result, nil

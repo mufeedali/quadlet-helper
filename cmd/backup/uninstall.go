@@ -2,9 +2,9 @@ package backup
 
 import (
 	"fmt"
-	"os"
 
-	"github.com/mufeedali/quadlet-helper/internal/backup"
+	internalbackup "github.com/mufeedali/quadlet-helper/internal/backup"
+	"github.com/mufeedali/quadlet-helper/internal/cmdutil"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
 	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
@@ -15,70 +15,38 @@ var uninstallCmd = &cobra.Command{
 	Short:             "Uninstall backup service and timer from systemd",
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: getInstalledBackupCompletions(),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		backupName := args[0]
 
-		// Check if actually installed
-		timerPath, _ := backup.GetTimerFilePath(backupName)
-		if !shared.FileExists(timerPath) {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Backup '%s' is not installed", backupName)))
-			fmt.Println("\nTo install it, use:")
-			fmt.Printf("  qh backup install %s\n", backupName)
-			os.Exit(1)
+		if !isInstalledBackup(backupName) {
+			return cmdutil.Errorf("backup %q is not installed\n\nTo install it, use:\n  qh backup install %s", backupName, backupName)
 		}
 
 		fmt.Println(shared.TitleStyle.Render(fmt.Sprintf("Uninstalling backup: %s", backupName)))
 
-		// Stop and disable timer
-		timerName := backup.BackupTimerName(backupName)
-		serviceName := backup.BackupServiceName(backupName)
-
-		if _, err := systemd.Stop(timerName); err != nil {
-			fmt.Println(shared.WarningStyle.Render(fmt.Sprintf("Could not stop timer: %v", err)))
+		result, err := systemd.UninstallUserUnits(
+			[]string{internalbackup.BackupTimerName(backupName), internalbackup.BackupServiceName(backupName)},
+			[]string{internalbackup.BackupTimerName(backupName)},
+			[]string{
+				internalbackup.BackupServiceName(backupName),
+				internalbackup.BackupTimerName(backupName),
+				fmt.Sprintf("backup-notify@%s.service", backupName),
+			},
+		)
+		if err != nil {
+			return err
 		}
-		if _, err := systemd.Disable(timerName); err != nil {
-			fmt.Println(shared.WarningStyle.Render(fmt.Sprintf("Could not disable timer: %v", err)))
+		for _, warning := range result.Warnings {
+			fmt.Println(shared.WarningStyle.Render("Warning: " + warning.Error()))
 		}
-
-		// Stop service if running
-		if _, err := systemd.Stop(serviceName); err != nil {
-			fmt.Println(shared.WarningStyle.Render(fmt.Sprintf("Could not stop service: %v", err)))
-		}
-
-		// Remove service file
-		serviceFilePath, _ := backup.GetServiceFilePath(backupName)
-		if err := os.Remove(serviceFilePath); err != nil {
-			if !os.IsNotExist(err) {
-				fmt.Println(shared.WarningStyle.Render(fmt.Sprintf("Warning: could not remove %s: %v", serviceFilePath, err)))
-			}
-		} else {
-			fmt.Println(shared.CheckMark + " Removed " + shared.FilePathStyle.Render(serviceFilePath))
-		}
-
-		// Remove timer file
-		timerFilePath, _ := backup.GetTimerFilePath(backupName)
-		if err := os.Remove(timerFilePath); err != nil {
-			if !os.IsNotExist(err) {
-				fmt.Println(shared.WarningStyle.Render(fmt.Sprintf("Warning: could not remove %s: %v", timerFilePath, err)))
-			}
-		} else {
-			fmt.Println(shared.CheckMark + " Removed " + shared.FilePathStyle.Render(timerFilePath))
-		}
-
-		// Remove notification service if exists
-		notifyFilePath, _ := backup.GetNotificationServiceFilePath(backupName)
-		if err := os.Remove(notifyFilePath); err == nil {
-			fmt.Println(shared.CheckMark + " Removed " + shared.FilePathStyle.Render(notifyFilePath))
-		}
-
-		// Reload systemd
-		if _, err := systemd.DaemonReload(); err != nil {
-			fmt.Println(shared.WarningStyle.Render(fmt.Sprintf("Could not reload systemd: %v", err)))
+		for _, path := range result.RemovedPaths {
+			fmt.Println(shared.CheckMark + " Removed " + shared.FilePathStyle.Render(path))
 		}
 
 		fmt.Println(shared.SuccessStyle.Render("\n✓ Uninstallation complete!"))
 		fmt.Println("\nNote: Configuration file still exists. To remove it, run:")
-		configPath, _ := backup.GetConfigPath(backupName)
+		configPath, _ := internalbackup.GetConfigPath(backupName)
 		fmt.Printf("  rm %s\n", configPath)
+		return nil
 	},
 }

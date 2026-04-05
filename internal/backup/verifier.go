@@ -1,8 +1,8 @@
 package backup
 
 import (
+	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -17,11 +17,19 @@ type VerifyResult struct {
 
 // Verify verifies a backup based on its type and configuration
 func Verify(config *Config) (*VerifyResult, error) {
+	normalized := config.Normalized()
+	config = &normalized
+
 	if !config.Verification.Enabled {
 		return &VerifyResult{
 			Success: true,
 			Message: "Verification disabled",
 		}, nil
+	}
+
+	// Validate config for type-specific rules before running tools
+	if err := config.Validate(); err != nil {
+		return nil, err
 	}
 
 	// Check if the required tool is available
@@ -48,7 +56,7 @@ func Verify(config *Config) (*VerifyResult, error) {
 
 // verifyRsync verifies an rsync backup
 func verifyRsync(config *Config) (*VerifyResult, error) {
-	method := config.Verification.Method
+	method := string(config.Verification.Method)
 	if method == "" {
 		method = "size"
 	}
@@ -82,10 +90,10 @@ func verifyRsyncSize(config *Config) (*VerifyResult, error) {
 		var destPath string
 		if strings.Contains(config.Destination.Path, ":") {
 			// Remote rsync destination - can't easily verify without SSH
-			details.WriteString(fmt.Sprintf("Source %s: %d bytes (remote verification not supported)\n", source, srcSize))
+			fmt.Fprintf(&details, "Source %s: %d bytes (remote verification not supported)\n", source, srcSize)
 			continue
 		} else {
-			destPath = config.Destination.Path
+			destPath = RsyncDestPath(config.Destination.Path, source, len(config.Source))
 		}
 
 		// Get destination size
@@ -97,13 +105,23 @@ func verifyRsyncSize(config *Config) (*VerifyResult, error) {
 			}, nil
 		}
 
+		if srcSize == 0 {
+			if destSize != 0 {
+				result.Success = false
+				result.Message = fmt.Sprintf("Size mismatch: source=%d, dest=%d", srcSize, destSize)
+			} else {
+				fmt.Fprintf(&details, "✓ %s: source=0 bytes, dest=0 bytes\n", source)
+			}
+			continue
+		}
+
 		// Compare sizes (allow 5% difference for metadata)
 		diff := float64(srcSize-destSize) / float64(srcSize) * 100
 		if diff < -5 || diff > 5 {
 			result.Success = false
 			result.Message = fmt.Sprintf("Size mismatch: source=%d, dest=%d (%.1f%% difference)", srcSize, destSize, diff)
 		} else {
-			details.WriteString(fmt.Sprintf("✓ %s: source=%d bytes, dest=%d bytes\n", source, srcSize, destSize))
+			fmt.Fprintf(&details, "✓ %s: source=%d bytes, dest=%d bytes\n", source, srcSize, destSize)
 		}
 	}
 
@@ -153,11 +171,7 @@ func verifyRsyncChecksum(config *Config) (*VerifyResult, error) {
 
 // verifyRestic verifies a restic backup
 func verifyRestic(config *Config) (*VerifyResult, error) {
-	env := append(os.Environ(), config.Environment...)
-	if config.Options.PasswordFile != "" {
-		env = append(env, fmt.Sprintf("RESTIC_PASSWORD_FILE=%s", config.Options.PasswordFile))
-	}
-	env = append(env, fmt.Sprintf("RESTIC_REPOSITORY=%s", config.Destination.Repository))
+	env := ResticEnv(config)
 
 	// Use restic check command
 	cmd := exec.Command("restic", "check")
@@ -181,39 +195,29 @@ func verifyRestic(config *Config) (*VerifyResult, error) {
 
 // verifyRclone verifies an rclone backup
 func verifyRclone(config *Config) (*VerifyResult, error) {
-	method := config.Verification.Method
-	if method == "" {
-		method = "check"
-	}
-
-	switch method {
-	case "check":
-		return verifyRcloneCheck(config)
-	case "cryptcheck":
-		return verifyRcloneCryptcheck(config)
-	case "size":
+	switch config.Verification.Method {
+	case VerificationMethodCheck, VerificationMethodCryptCheck:
+		return runRcloneCheck(config, config.Verification.Method)
+	case VerificationMethodSize:
 		return verifyRcloneSize(config)
 	default:
-		return nil, fmt.Errorf("unsupported verification method for rclone: %s", method)
+		// Shouldn't happen - validated earlier
+		return nil, fmt.Errorf("unsupported verification method for rclone: %s", config.Verification.Method)
 	}
 }
 
-// verifyRcloneCheck verifies rclone backup using rclone check
-func verifyRcloneCheck(config *Config) (*VerifyResult, error) {
+// runRcloneCheck runs rclone check/cryptcheck for each source.
+func runRcloneCheck(config *Config, verb VerificationMethod) (*VerifyResult, error) {
+	v := string(verb)
 	var allOutput strings.Builder
 	success := true
 
 	for _, source := range config.Source {
-		destPath := config.Destination.Remote
-		if len(config.Source) > 1 {
-			// If multiple sources, append source basename to destination
-			destPath = fmt.Sprintf("%s/%s", config.Destination.Remote, source[strings.LastIndex(source, "/")+1:])
-		}
+		destPath := RcloneDestPath(config.Destination.Remote, source, len(config.Source))
 
-		args := []string{"check", source, destPath}
-
+		args := []string{v, source, destPath}
 		cmd := exec.Command("rclone", args...)
-		cmd.Env = append(os.Environ(), config.Environment...)
+		cmd.Env = BaseEnv(config)
 
 		output, err := cmd.CombinedOutput()
 		allOutput.WriteString(string(output))
@@ -227,54 +231,14 @@ func verifyRcloneCheck(config *Config) (*VerifyResult, error) {
 	if success {
 		return &VerifyResult{
 			Success: true,
-			Message: "Rclone check successful - all files match",
+			Message: fmt.Sprintf("Rclone %s successful - all files match", v),
 			Details: allOutput.String(),
 		}, nil
 	}
 
 	return &VerifyResult{
 		Success: false,
-		Message: "Rclone check found differences",
-		Details: allOutput.String(),
-	}, nil
-}
-
-// verifyRcloneCryptcheck verifies rclone encrypted backup
-func verifyRcloneCryptcheck(config *Config) (*VerifyResult, error) {
-	var allOutput strings.Builder
-	success := true
-
-	for _, source := range config.Source {
-		destPath := config.Destination.Remote
-		if len(config.Source) > 1 {
-			destPath = fmt.Sprintf("%s/%s", config.Destination.Remote, source[strings.LastIndex(source, "/")+1:])
-		}
-
-		args := []string{"cryptcheck", source, destPath}
-
-		cmd := exec.Command("rclone", args...)
-		cmd.Env = append(os.Environ(), config.Environment...)
-
-		output, err := cmd.CombinedOutput()
-		allOutput.WriteString(string(output))
-		allOutput.WriteString("\n")
-
-		if err != nil {
-			success = false
-		}
-	}
-
-	if success {
-		return &VerifyResult{
-			Success: true,
-			Message: "Rclone cryptcheck successful - all files match",
-			Details: allOutput.String(),
-		}, nil
-	}
-
-	return &VerifyResult{
-		Success: false,
-		Message: "Rclone cryptcheck found differences",
+		Message: fmt.Sprintf("Rclone %s found differences", v),
 		Details: allOutput.String(),
 	}, nil
 }
@@ -284,53 +248,78 @@ func verifyRcloneSize(config *Config) (*VerifyResult, error) {
 	var allOutput strings.Builder
 	success := true
 
-	for _, source := range config.Source {
-		destPath := config.Destination.Remote
-		if len(config.Source) > 1 {
-			destPath = fmt.Sprintf("%s/%s", config.Destination.Remote, source[strings.LastIndex(source, "/")+1:])
-		}
+	type rcloneSize struct {
+		Count int64 `json:"count"`
+		Bytes int64 `json:"bytes"`
+	}
 
+	for _, source := range config.Source {
+		destPath := RcloneDestPath(config.Destination.Remote, source, len(config.Source))
+
+		// source
 		args := []string{"size", source, "--json"}
 		cmd := exec.Command("rclone", args...)
-		cmd.Env = append(os.Environ(), config.Environment...)
+		cmd.Env = BaseEnv(config)
 		srcOutput, err := cmd.CombinedOutput()
 		if err != nil {
-			return &VerifyResult{
-				Success: false,
-				Message: fmt.Sprintf("Failed to get source size: %v", err),
-				Details: string(srcOutput),
-			}, nil
+			return &VerifyResult{Success: false, Message: fmt.Sprintf("Failed to get source size: %v", err), Details: string(srcOutput)}, nil
 		}
 
+		var src rcloneSize
+		if err := json.Unmarshal(srcOutput, &src); err != nil {
+			return &VerifyResult{Success: false, Message: fmt.Sprintf("Failed to parse source size JSON: %v", err), Details: string(srcOutput)}, nil
+		}
+
+		// dest
 		args = []string{"size", destPath, "--json"}
 		cmd = exec.Command("rclone", args...)
-		cmd.Env = append(os.Environ(), config.Environment...)
+		cmd.Env = BaseEnv(config)
 		destOutput, err := cmd.CombinedOutput()
 		if err != nil {
-			return &VerifyResult{
-				Success: false,
-				Message: fmt.Sprintf("Failed to get destination size: %v", err),
-				Details: string(destOutput),
-			}, nil
+			return &VerifyResult{Success: false, Message: fmt.Sprintf("Failed to get destination size: %v", err), Details: string(destOutput)}, nil
 		}
 
-		allOutput.WriteString(fmt.Sprintf("Source %s: %s\n", source, string(srcOutput)))
-		allOutput.WriteString(fmt.Sprintf("Dest %s: %s\n", destPath, string(destOutput)))
+		var dst rcloneSize
+		if err := json.Unmarshal(destOutput, &dst); err != nil {
+			return &VerifyResult{Success: false, Message: fmt.Sprintf("Failed to parse destination size JSON: %v", err), Details: string(destOutput)}, nil
+		}
+
+		// compare with 5% tolerance
+		match := true
+		var detailLine string
+		if src.Bytes == 0 {
+			if dst.Bytes != 0 {
+				match = false
+				detailLine = fmt.Sprintf("%s: source=0 bytes, dest=%d bytes (mismatch)", source, dst.Bytes)
+			} else {
+				detailLine = fmt.Sprintf("%s: source=0 bytes, dest=0 bytes", source)
+			}
+		} else {
+			diff := float64(src.Bytes-dst.Bytes) / float64(src.Bytes) * 100
+			if diff < -5 || diff > 5 {
+				match = false
+				detailLine = fmt.Sprintf("%s: source=%d bytes, dest=%d bytes (%.1f%% diff)", source, src.Bytes, dst.Bytes, diff)
+			} else {
+				detailLine = fmt.Sprintf("✓ %s: source=%d bytes, dest=%d bytes (%.1f%% diff)", source, src.Bytes, dst.Bytes, diff)
+			}
+		}
+
+		if !match {
+			success = false
+		}
+
+		allOutput.WriteString(detailLine)
+		allOutput.WriteString("\n")
+		// include raw JSON for debugging
+		fmt.Fprintf(&allOutput, "Source JSON: %s\n", string(srcOutput))
+		fmt.Fprintf(&allOutput, "Dest JSON: %s\n", string(destOutput))
 	}
 
 	if success {
-		return &VerifyResult{
-			Success: true,
-			Message: "Size comparison successful",
-			Details: allOutput.String(),
-		}, nil
+		return &VerifyResult{Success: true, Message: "Size comparison successful", Details: allOutput.String()}, nil
 	}
 
-	return &VerifyResult{
-		Success: false,
-		Message: "Size comparison found differences",
-		Details: allOutput.String(),
-	}, nil
+	return &VerifyResult{Success: false, Message: "Size comparison found differences", Details: allOutput.String()}, nil
 }
 
 // getDirSize returns the total size of a directory in bytes

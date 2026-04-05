@@ -1,12 +1,13 @@
 package backup
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/goccy/go-yaml"
+	"go.yaml.in/yaml/v3"
 )
 
 // GetConfigDir returns the backup configuration directory
@@ -45,9 +46,12 @@ func LoadConfig(name string) (*Config, error) {
 	}
 
 	var config Config
-	if err := yaml.UnmarshalWithOptions(data, &config, yaml.Strict()); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&config); err != nil {
 		return nil, fmt.Errorf("error parsing config file:\n%w", err)
 	}
+	config = config.Normalized()
 
 	return &config, nil
 }
@@ -68,12 +72,17 @@ func SaveConfig(config *Config) error {
 		return err
 	}
 
-	data, err := yaml.MarshalWithOptions(config, yaml.Indent(2), yaml.UseSingleQuote(false))
-	if err != nil {
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(config); err != nil {
+		_ = enc.Close()
 		return fmt.Errorf("error marshaling config: %w", err)
 	}
+	_ = enc.Close()
+	data := buf.Bytes()
 
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
+	if err := os.WriteFile(configPath, data, 0600); err != nil {
 		return fmt.Errorf("error writing config file: %w", err)
 	}
 

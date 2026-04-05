@@ -1,78 +1,24 @@
 package backup
 
 import (
-	"github.com/mufeedali/quadlet-helper/internal/backup"
-	"github.com/mufeedali/quadlet-helper/internal/shared"
+	"strings"
+
 	"github.com/spf13/cobra"
 )
 
 // getBackupNameCompletions returns a ValidArgsFunction that provides backup name completions
 func getBackupNameCompletions() func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		// Only complete the first argument (backup name)
-		if len(args) > 0 {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-
-		configs, err := backup.ListConfigs()
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
-		}
-
-		return configs, cobra.ShellCompDirectiveNoFileComp
-	}
+	return backupCompletionFunc(nil)
 }
 
 // getInstalledBackupCompletions returns completions for backups that are installed
 func getInstalledBackupCompletions() func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		// Only complete the first argument (backup name)
-		if len(args) > 0 {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-
-		configs, err := backup.ListConfigs()
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
-		}
-
-		// Filter to only installed backups
-		var installed []string
-		for _, name := range configs {
-			timerFilePath, _ := backup.GetTimerFilePath(name)
-			if shared.FileExists(timerFilePath) {
-				installed = append(installed, name)
-			}
-		}
-
-		return installed, cobra.ShellCompDirectiveNoFileComp
-	}
+	return backupCompletionFunc(isInstalledBackup)
 }
 
 // getNotInstalledBackupCompletions returns completions for backups that are not installed
 func getNotInstalledBackupCompletions() func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		// Only complete the first argument (backup name)
-		if len(args) > 0 {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-
-		configs, err := backup.ListConfigs()
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
-		}
-
-		// Filter to only non-installed backups
-		var notInstalled []string
-		for _, name := range configs {
-			timerFilePath, _ := backup.GetTimerFilePath(name)
-			if !shared.FileExists(timerFilePath) {
-				notInstalled = append(notInstalled, name)
-			}
-		}
-
-		return notInstalled, cobra.ShellCompDirectiveNoFileComp
-	}
+	return backupCompletionFunc(func(name string) bool { return !isInstalledBackup(name) })
 }
 
 // getNotifyCompletions returns a ValidArgsFunction that provides completions for the notify command
@@ -80,16 +26,19 @@ func getNotifyCompletions() func(cmd *cobra.Command, args []string, toComplete s
 	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		// First argument: backup name
 		if len(args) == 0 {
-			configs, err := backup.ListConfigs()
-			if err != nil {
-				return nil, cobra.ShellCompDirectiveError
-			}
-			return configs, cobra.ShellCompDirectiveNoFileComp
+			return backupCompletionFunc(nil)(cmd, args, toComplete)
 		}
 
 		// Second argument: status (success or failure)
 		if len(args) == 1 {
-			return []string{"success", "failure"}, cobra.ShellCompDirectiveNoFileComp
+			statuses := []string{"success", "failure"}
+			completions := make([]string, 0, len(statuses))
+			for _, status := range statuses {
+				if strings.HasPrefix(status, toComplete) {
+					completions = append(completions, status)
+				}
+			}
+			return completions, cobra.ShellCompDirectiveNoFileComp
 		}
 
 		return nil, cobra.ShellCompDirectiveNoFileComp

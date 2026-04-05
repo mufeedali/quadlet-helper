@@ -16,7 +16,6 @@ func ParseSchedule(schedule string) (string, error) {
 	schedules := map[string]string{
 		"hourly":           "*-*-* *:00:00",
 		"daily":            "*-*-* 02:00:00",
-		"daily 02:00":      "*-*-* 02:00:00",
 		"weekly":           "Mon *-*-* 02:00:00",
 		"weekly sun 03:00": "Sun *-*-* 03:00:00",
 		"monthly":          "*-*-01 02:00:00",

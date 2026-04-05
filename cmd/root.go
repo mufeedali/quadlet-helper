@@ -9,19 +9,22 @@ import (
 	"github.com/mufeedali/quadlet-helper/cmd/cloudflare"
 	"github.com/mufeedali/quadlet-helper/cmd/generate"
 	"github.com/mufeedali/quadlet-helper/cmd/unit"
+	"github.com/mufeedali/quadlet-helper/internal/cmdutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "qh",
-	Short: "A helper for quadlet containers",
-	Long:  `qh is a tool for managing quad-bucket.`,
+	Use:           "qh",
+	Short:         "A helper for quadlet containers",
+	Long:          `qh is a tool for managing quadlet units and related systemd helpers.`,
+	SilenceErrors: true,
+	SilenceUsage:  true,
 }
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		cmdutil.PrintError(err)
 		os.Exit(1)
 	}
 }

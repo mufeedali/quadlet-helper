@@ -1,12 +1,14 @@
 package backup
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -70,6 +72,9 @@ func GetInstallInstructions(backupType BackupType) string {
 
 // Run executes a backup based on its configuration
 func Run(config *Config, dryRun bool) (*RunResult, error) {
+	normalized := config.Normalized()
+	config = &normalized
+
 	result := &RunResult{
 		StartTime: time.Now(),
 	}
@@ -143,163 +148,59 @@ func Run(config *Config, dryRun bool) (*RunResult, error) {
 
 // runRsyncBackup executes an rsync backup
 func runRsyncBackup(config *Config, dryRun bool) (string, error) {
-	args := []string{}
-
-	if dryRun {
-		args = append(args, "--dry-run")
-	}
-
-	// Add rsync options
-	if config.Options.Archive {
-		args = append(args, "-a")
-	}
-	if config.Options.Compress {
-		args = append(args, "-z")
-	}
-	if config.Options.Delete {
-		args = append(args, "--delete")
-	}
-
-	// Add verbose and progress
-	args = append(args, "-v", "--progress")
-
-	// Add excludes
-	for _, exclude := range config.Options.Exclude {
-		args = append(args, "--exclude", exclude)
-	}
-
-	// Add sources
-	args = append(args, config.Source...)
-
-	// Add destination
-	args = append(args, config.Destination.Path)
-
-	cmd := exec.Command("rsync", args...)
-	cmd.Env = append(os.Environ(), config.Environment...)
-
-	// For interactive use, stream output directly to terminal
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	err := cmd.Run()
+	output, err := runCommandStreaming("rsync", RsyncArgs(config, dryRun), BaseEnv(config))
 	if err != nil {
-		return "", fmt.Errorf("rsync failed: %w", err)
+		return output, fmt.Errorf("rsync failed: %w", err)
 	}
 
-	return "Rsync completed successfully", nil
+	return output, nil
 }
 
 // runResticBackup executes a restic backup
 func runResticBackup(config *Config, dryRun bool) (string, error) {
-	// Set password file environment variable
-	env := append(os.Environ(), config.Environment...)
-	if config.Options.PasswordFile != "" {
-		env = append(env, fmt.Sprintf("RESTIC_PASSWORD_FILE=%s", config.Options.PasswordFile))
-	}
-	env = append(env, fmt.Sprintf("RESTIC_REPOSITORY=%s", config.Destination.Repository))
+	env := ResticEnv(config)
 
 	if dryRun {
-		// For dry-run, just check if repository exists
-		cmd := exec.Command("restic", "snapshots", "--latest", "1")
-		cmd.Env = env
-		output, err := cmd.CombinedOutput()
-		return string(output), err
+		return runCommandStreaming("restic", []string{"snapshots", "--latest", "1"}, env)
 	}
 
-	// Run backup
-	args := []string{"backup"}
-
-	// Add excludes
-	for _, exclude := range config.Options.Exclude {
-		args = append(args, "--exclude", exclude)
-	}
-
-	// Add sources
-	args = append(args, config.Source...)
-
-	cmd := exec.Command("restic", args...)
-	cmd.Env = env
-
-	// For interactive use, stream output directly to terminal
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	err := cmd.Run()
+	output, err := runCommandStreaming("restic", ResticBackupArgs(config), env)
 	if err != nil {
-		return "", fmt.Errorf("restic backup failed: %w", err)
+		return output, fmt.Errorf("restic backup failed: %w", err)
 	}
 
-	return "Restic backup completed successfully", nil
+	return output, nil
 }
 
 // runRcloneBackup executes an rclone backup
 func runRcloneBackup(config *Config, dryRun bool) (string, error) {
-	args := []string{"sync"}
+	args := RcloneBaseArgs(config, dryRun)
+	env := BaseEnv(config)
 
-	if dryRun {
-		args = append(args, "--dry-run")
-	}
-
-	// Add rclone options
-	if config.Options.Transfers > 0 {
-		args = append(args, "--transfers", fmt.Sprintf("%d", config.Options.Transfers))
-	}
-	if config.Options.Checkers > 0 {
-		args = append(args, "--checkers", fmt.Sprintf("%d", config.Options.Checkers))
-	}
-	if config.Options.BandwidthLimit != "" {
-		args = append(args, "--bwlimit", config.Options.BandwidthLimit)
-	}
-
-	// Add excludes
-	for _, exclude := range config.Options.Exclude {
-		args = append(args, "--exclude", exclude)
-	}
-
-	// Add progress and verbose
-	args = append(args, "-v", "--progress")
-
-	// For multiple sources, we need to run rclone for each source
-	// or use a wrapper. For simplicity, we'll concatenate sources if they're in the same parent
-	// In production, you might want to handle this differently
-
-	// If there's only one source, it's straightforward
 	if len(config.Source) == 1 {
-		args = append(args, config.Source[0], config.Destination.Remote)
+		output, err := runCommandStreaming("rclone", append(args, config.Source[0], config.Destination.Remote), env)
+		if err != nil {
+			return output, fmt.Errorf("rclone failed: %w", err)
+		}
+		return output, nil
 	} else {
-		// For multiple sources, we'll backup each separately
 		var allOutput strings.Builder
 		for _, source := range config.Source {
 			srcArgs := slices.Clone(args)
-			srcArgs = append(srcArgs, source, filepath.Join(config.Destination.Remote, filepath.Base(source)))
+			srcArgs = append(srcArgs, source, RcloneDestPath(config.Destination.Remote, source, len(config.Source)))
 
-			cmd := exec.Command("rclone", srcArgs...)
-			cmd.Env = append(os.Environ(), config.Environment...)
-
-			output, err := cmd.CombinedOutput()
-			allOutput.WriteString(string(output))
-			allOutput.WriteString("\n")
+			output, err := runCommandStreaming("rclone", srcArgs, env)
+			allOutput.WriteString(output)
+			if !strings.HasSuffix(output, "\n") {
+				allOutput.WriteString("\n")
+			}
 
 			if err != nil {
-				return allOutput.String(), fmt.Errorf("rclone failed for %s: %w\nOutput: %s", source, err, string(output))
+				return allOutput.String(), fmt.Errorf("rclone failed for %s: %w", source, err)
 			}
 		}
 		return allOutput.String(), nil
 	}
-
-	cmd := exec.Command("rclone", args...)
-	cmd.Env = append(os.Environ(), config.Environment...)
-
-	// For interactive use, stream output directly to terminal
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	err := cmd.Run()
-	if err != nil {
-		return "", fmt.Errorf("rclone failed: %w", err)
-	}
-
-	return "Rclone sync completed successfully", nil
 }
 
 // runHook executes a hook script
@@ -314,6 +215,9 @@ func runHook(hookPath string) error {
 
 // Cleanup performs retention cleanup based on backup type
 func Cleanup(config *Config) error {
+	normalized := config.Normalized()
+	config = &normalized
+
 	switch config.Type {
 	case BackupTypeRestic:
 		return cleanupRestic(config)
@@ -333,11 +237,7 @@ func cleanupRestic(config *Config) error {
 		return nil
 	}
 
-	env := append(os.Environ(), config.Environment...)
-	if config.Options.PasswordFile != "" {
-		env = append(env, fmt.Sprintf("RESTIC_PASSWORD_FILE=%s", config.Options.PasswordFile))
-	}
-	env = append(env, fmt.Sprintf("RESTIC_REPOSITORY=%s", config.Destination.Repository))
+	env := ResticEnv(config)
 
 	args := []string{"forget", "--prune"}
 
@@ -373,7 +273,7 @@ func cleanupRclone(config *Config) error {
 	}
 
 	cmd := exec.Command("rclone", args...)
-	cmd.Env = append(os.Environ(), config.Environment...)
+	cmd.Env = BaseEnv(config)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -381,4 +281,36 @@ func cleanupRclone(config *Config) error {
 	}
 
 	return nil
+}
+
+// syncWriter serialises writes from concurrent stdout/stderr goroutines.
+type syncWriter struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (sw *syncWriter) Write(p []byte) (int, error) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	return sw.buf.Write(p)
+}
+
+func (sw *syncWriter) String() string {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	return sw.buf.String()
+}
+
+func runCommandStreaming(name string, args []string, env []string) (string, error) {
+	cmd := exec.Command(name, args...)
+	if len(env) > 0 {
+		cmd.Env = env
+	}
+
+	var output syncWriter
+	cmd.Stdout = io.MultiWriter(os.Stdout, &output)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &output)
+
+	err := cmd.Run()
+	return output.String(), err
 }

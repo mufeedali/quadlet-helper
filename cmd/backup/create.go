@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mufeedali/quadlet-helper/internal/backup"
+	"github.com/mufeedali/quadlet-helper/internal/cmdutil"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
 	"github.com/spf13/cobra"
 )
@@ -17,7 +18,7 @@ var createCmd = &cobra.Command{
 	Short: "Create a new backup configuration",
 	Long:  `Interactive wizard to create a new backup configuration for rsync, restic, or rclone.`,
 	Args:  cobra.MaximumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Println(shared.TitleStyle.Render("Create New Backup Configuration"))
 		fmt.Println()
 
@@ -34,15 +35,12 @@ var createCmd = &cobra.Command{
 		}
 
 		if config.Name == "" {
-			fmt.Println(shared.ErrorStyle.Render("Error: Backup name is required"))
-			os.Exit(1)
+			return cmdutil.Errorf("backup name is required")
 		}
 
-		// Check if backup already exists
 		configPath, _ := backup.GetConfigPath(config.Name)
 		if _, err := os.Stat(configPath); err == nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error: Backup '%s' already exists", config.Name)))
-			os.Exit(1)
+			return cmdutil.Errorf("backup %q already exists", config.Name)
 		}
 
 		// Get backup type
@@ -62,15 +60,12 @@ var createCmd = &cobra.Command{
 		case "3":
 			config.Type = backup.BackupTypeRclone
 		default:
-			fmt.Println(shared.ErrorStyle.Render("Invalid choice"))
-			os.Exit(1)
+			return cmdutil.Errorf("invalid choice")
 		}
 
-		// Check if the selected backup tool is available
 		available, err := backup.CheckToolAvailable(config.Type)
 		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error checking tool availability: %v", err)))
-			os.Exit(1)
+			return cmdutil.Wrap(err, "checking tool availability")
 		}
 		if !available {
 			fmt.Println()
@@ -80,7 +75,7 @@ var createCmd = &cobra.Command{
 			fmt.Println()
 			if !askYesNo(reader, "Continue anyway? (y/n): ") {
 				fmt.Println("Backup creation cancelled.")
-				os.Exit(0)
+				return nil
 			}
 		}
 
@@ -201,15 +196,12 @@ var createCmd = &cobra.Command{
 			config.Notifications.Email.From = strings.TrimSpace(from)
 		}
 
-		// Validate and save
 		if err := config.Validate(); err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Validation error: %v", err)))
-			os.Exit(1)
+			return cmdutil.Wrap(err, "validation error")
 		}
 
 		if err := backup.SaveConfig(config); err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error saving config: %v", err)))
-			os.Exit(1)
+			return cmdutil.Wrap(err, "saving config")
 		}
 
 		configPath, _ = backup.GetConfigPath(config.Name)
@@ -220,6 +212,7 @@ var createCmd = &cobra.Command{
 		fmt.Println("Next steps:")
 		fmt.Printf("  1. Install the backup: %s\n", shared.FilePathStyle.Render(fmt.Sprintf("qh backup install %s", config.Name)))
 		fmt.Printf("  2. Test the backup: %s\n", shared.FilePathStyle.Render(fmt.Sprintf("qh backup test %s", config.Name)))
+		return nil
 	},
 }
 

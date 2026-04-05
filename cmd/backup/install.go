@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mufeedali/quadlet-helper/internal/backup"
+	internalbackup "github.com/mufeedali/quadlet-helper/internal/backup"
+	"github.com/mufeedali/quadlet-helper/internal/cmdutil"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
 	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
@@ -15,90 +16,57 @@ var installCmd = &cobra.Command{
 	Short:             "Install backup service and timer to systemd",
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: getNotInstalledBackupCompletions(),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		backupName := args[0]
 
-		// Check if already installed
-		timerPath, _ := backup.GetTimerFilePath(backupName)
-		if shared.FileExists(timerPath) {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Backup '%s' is already installed", backupName)))
-			fmt.Println("\nTo reinstall, first uninstall it with:")
-			fmt.Printf("  qh backup uninstall %s\n", backupName)
-			os.Exit(1)
+		if isInstalledBackup(backupName) {
+			return cmdutil.Errorf("backup %q is already installed\n\nTo reinstall, first uninstall it with:\n  qh backup uninstall %s", backupName, backupName)
 		}
 
 		fmt.Println(shared.TitleStyle.Render(fmt.Sprintf("Installing backup: %s", backupName)))
 
-		// Load config
-		config, err := backup.LoadConfig(backupName)
+		config, err := loadBackupConfig(backupName)
 		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error loading config: %v", err)))
-			os.Exit(1)
+			return err
 		}
 
-		// Get systemd user directory
-		systemdDir, err := backup.GetSystemdUserDir()
-		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error: %v", err)))
-			os.Exit(1)
-		}
-
-		if err := os.MkdirAll(systemdDir, 0755); err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error creating systemd directory: %v", err)))
-			os.Exit(1)
-		}
-
-		// Get executable path
 		executablePath, err := os.Executable()
 		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error finding executable: %v", err)))
-			os.Exit(1)
+			return cmdutil.Wrap(err, "finding executable")
 		}
 
-		configPath, _ := backup.GetConfigPath(backupName)
-
-		// Create service file
-		serviceContent := backup.GetServiceTemplate(executablePath, configPath, backupName, config)
-		serviceFilePath, _ := backup.GetServiceFilePath(backupName)
-		if err := os.WriteFile(serviceFilePath, []byte(serviceContent), 0644); err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error writing service file: %v", err)))
-			os.Exit(1)
-		}
-		fmt.Println(shared.CheckMark + " Created " + shared.FilePathStyle.Render(serviceFilePath))
-
-		// Create timer file
-		timerContent, err := backup.GetTimerTemplate(backupName, config.Schedule)
+		timerContent, err := internalbackup.GetTimerTemplate(backupName, config.Schedule)
 		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error creating timer template: %v", err)))
-			os.Exit(1)
-		}
-		timerFilePath, _ := backup.GetTimerFilePath(backupName)
-		if err := os.WriteFile(timerFilePath, []byte(timerContent), 0644); err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error writing timer file: %v", err)))
-			os.Exit(1)
-		}
-		fmt.Println(shared.CheckMark + " Created " + shared.FilePathStyle.Render(timerFilePath))
-
-		// Reload systemd
-		if _, err := systemd.DaemonReload(); err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error reloading systemd: %v", err)))
-			os.Exit(1)
+			return cmdutil.Wrap(err, "creating timer template")
 		}
 
-		// Enable and start timer
-		timerName := backup.BackupTimerName(backupName)
-		if _, err := systemd.Enable(timerName); err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error enabling timer: %v", err)))
-			os.Exit(1)
+		paths, err := systemd.InstallUserUnits([]systemd.UserUnitFile{
+			{Name: internalbackup.BackupServiceName(backupName), Content: internalbackup.GetServiceTemplate(executablePath, backupName, config), Mode: 0644},
+			{Name: internalbackup.BackupTimerName(backupName), Content: timerContent, Mode: 0644},
+		}, []string{internalbackup.BackupTimerName(backupName)})
+		if err != nil {
+			return err
 		}
-		if _, err := systemd.Start(timerName); err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error starting timer: %v", err)))
-			os.Exit(1)
+		for _, path := range paths {
+			fmt.Println(shared.CheckMark + " Created " + shared.FilePathStyle.Render(path))
 		}
+
+		timerName := internalbackup.BackupTimerName(backupName)
 
 		fmt.Println(shared.SuccessStyle.Render("\n✓ Installation complete!"))
 		fmt.Println(shared.TitleStyle.Render("Timer status:"))
-		output, _ := systemd.Status(timerName)
+		output, err := systemd.Status(timerName)
 		fmt.Println(output)
+		if err != nil {
+			return cmdutil.Wrap(err, "getting timer status")
+		}
+		active, err := systemd.IsActive(timerName)
+		if err != nil {
+			return cmdutil.Wrap(err, "checking timer active state")
+		}
+		if !active {
+			return cmdutil.Errorf("timer %s did not become active after installation", timerName)
+		}
+		return nil
 	},
 }

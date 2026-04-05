@@ -1,13 +1,17 @@
 package unit
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 
 	"github.com/mufeedali/quadlet-helper/internal/shared"
 	"github.com/spf13/viper"
 )
+
+var errQuadletFileFound = errors.New("quadlet file found")
 
 // resolveServiceNames resolves a list of unit names to their corresponding systemd service names.
 func resolveServiceNames(unitNames []string) ([]string, error) {
@@ -78,9 +82,9 @@ func findQuadletFile(dir, unitName string) (string, error) {
 		}
 
 		foundPath = path
-		return filepath.SkipDir // Stop searching
+		return errQuadletFileFound
 	})
-	if err != nil {
+	if err != nil && !errors.Is(err, errQuadletFileFound) {
 		return "", err
 	}
 	if foundPath == "" {
@@ -102,4 +106,13 @@ func isQuadletUnit(ext string) bool {
 		".artifact":  true, // Added based on docs
 	}
 	return validExtensions[ext]
+}
+
+func writeQuadletFile(path string, content []byte) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, content, info.Mode().Perm())
 }

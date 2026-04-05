@@ -1,5 +1,7 @@
 package backup
 
+import "fmt"
+
 // BackupType represents the type of backup tool
 type BackupType string
 
@@ -51,10 +53,38 @@ type Options struct {
 }
 
 // Verification settings
+// VerificationMethod enumerates allowed verification methods.
+type VerificationMethod string
+
+const (
+	VerificationMethodSize       VerificationMethod = "size"
+	VerificationMethodChecksum   VerificationMethod = "checksum"
+	VerificationMethodCheck      VerificationMethod = "check"
+	VerificationMethodCryptCheck VerificationMethod = "cryptcheck"
+)
+
+// Verification settings
 type Verification struct {
-	Enabled    bool   `yaml:"enabled"`
-	AutoVerify bool   `yaml:"auto_verify"`
-	Method     string `yaml:"method,omitempty"` // check, checksum, size, cryptcheck
+	Enabled    bool               `yaml:"enabled"`
+	AutoVerify bool               `yaml:"auto_verify"`
+	Method     VerificationMethod `yaml:"method,omitempty"` // check, checksum, size, cryptcheck
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler so mapstructure/viper
+// will reject invalid values during unmarshal.
+func (m *VerificationMethod) UnmarshalText(text []byte) error {
+	s := string(text)
+	if s == "" {
+		*m = VerificationMethod(s)
+		return nil
+	}
+	switch s {
+	case string(VerificationMethodSize), string(VerificationMethodChecksum), string(VerificationMethodCheck), string(VerificationMethodCryptCheck):
+		*m = VerificationMethod(s)
+		return nil
+	default:
+		return fmt.Errorf("invalid verification method: %q", s)
+	}
 }
 
 // Retention settings

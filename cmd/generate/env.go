@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mufeedali/quadlet-helper/internal/cmdutil"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -18,7 +19,7 @@ var envCmd = &cobra.Command{
 	Short: "Generate .env.example files from .env files",
 	Long: `This command searches for .env files in the specified containers directory
 and creates a corresponding .env.example file for each, stripping the values.`,
-	Run: func(c *cobra.Command, args []string) {
+	RunE: func(c *cobra.Command, args []string) error {
 		containersPath := viper.GetString("containers-path")
 		realContainersPath := shared.ResolveContainersDir(containersPath)
 
@@ -48,8 +49,7 @@ and creates a corresponding .env.example file for each, stripping the values.`,
 		})
 
 		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error walking directory: %v", err)))
-			os.Exit(1)
+			return cmdutil.Wrap(err, "walking directory")
 		}
 
 		if !foundAny {
@@ -57,13 +57,13 @@ and creates a corresponding .env.example file for each, stripping the values.`,
 		}
 
 		if hasErrors {
-			fmt.Println(shared.ErrorStyle.Render("\nGeneration completed with errors."))
-			os.Exit(1)
+			return cmdutil.Errorf("generation completed with errors")
 		}
 
 		fmt.Println(shared.TitleStyle.Render("\nGeneration complete."))
 
 		ExitIfHookMode(c, modifiedAny)
+		return nil
 	},
 }
 

@@ -2,9 +2,9 @@ package backup
 
 import (
 	"fmt"
-	"os"
 
-	"github.com/mufeedali/quadlet-helper/internal/backup"
+	internalbackup "github.com/mufeedali/quadlet-helper/internal/backup"
+	"github.com/mufeedali/quadlet-helper/internal/cmdutil"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
 	"github.com/spf13/cobra"
 )
@@ -14,34 +14,26 @@ var verifyCmd = &cobra.Command{
 	Short:             "Verify backup integrity",
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: getBackupNameCompletions(),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		backupName := args[0]
 
-		fmt.Println(shared.TitleStyle.Render(fmt.Sprintf("Verifying backup: %s", backupName)))
-		fmt.Println()
+		fmt.Println("Verifying backup: " + shared.TitleStyle.Render(backupName))
 
-		// Load config
-		config, err := backup.LoadConfig(backupName)
+		config, err := loadBackupConfig(backupName)
 		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error loading config: %v", err)))
-			os.Exit(1)
+			return err
 		}
 
-		// Verify backup
-		result, err := backup.Verify(config)
+		result, err := internalbackup.Verify(config)
 		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Verification error: %v", err)))
-			os.Exit(1)
+			return cmdutil.Wrap(err, "verification error")
 		}
 
 		if !result.Success {
-			fmt.Println(shared.ErrorStyle.Render("✗ Verification failed"))
-			fmt.Println(shared.ErrorStyle.Render(result.Message))
 			if result.Details != "" {
-				fmt.Println("\nDetails:")
-				fmt.Println(result.Details)
+				return cmdutil.Errorf("verification failed: %s\n\nDetails:\n%s", result.Message, result.Details)
 			}
-			os.Exit(1)
+			return cmdutil.Errorf("verification failed: %s", result.Message)
 		}
 
 		fmt.Println(shared.SuccessStyle.Render("✓ Verification successful"))
@@ -50,5 +42,7 @@ var verifyCmd = &cobra.Command{
 			fmt.Println("\nDetails:")
 			fmt.Println(result.Details)
 		}
+
+		return nil
 	},
 }

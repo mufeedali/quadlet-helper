@@ -55,9 +55,9 @@ func WalkWithSymlinks(root string, walkFn func(path string, d fs.DirEntry) error
 					}
 					targetInfo, err := os.Stat(target)
 					if err == nil && targetInfo.IsDir() {
-						// Recurse into the symlinked directory
-						// We ignore the error from walk() to continue processing the current directory
-						_ = walk(target)
+						if err := walk(target); err != nil {
+							return err
+						}
 					}
 				}
 			}

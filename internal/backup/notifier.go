@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"html/template"
-	"io"
 	"net/smtp"
 	"os"
 	"os/exec"
@@ -168,8 +167,16 @@ func extractEmailAddress(addr string) string {
 
 // sendEmail sends an email using SMTP
 func sendEmail(emailConf config.EmailConfig, password, from, to, subject, body string) error {
-	toList := []string{extractEmailAddress(to)}
 	fromAddr := extractEmailAddress(from)
+	toAddr := extractEmailAddress(to)
+	if fromAddr == "" {
+		return fmt.Errorf("no sender email address configured")
+	}
+	if toAddr == "" {
+		return fmt.Errorf("no recipient email address configured")
+	}
+
+	toList := []string{toAddr}
 
 	// Prepare message with HTML content type
 	msg := fmt.Appendf(nil, "From: %s\r\n"+
@@ -194,30 +201,42 @@ func sendEmail(emailConf config.EmailConfig, password, from, to, subject, body s
 	return smtp.SendMail(addr, auth, fromAddr, toList, msg)
 }
 
-// sendEmailTLS sends email using TLS
+// sendEmailTLS sends email using TLS.
 func sendEmailTLS(addr string, auth smtp.Auth, from string, to []string, msg []byte, serverName string) error {
 	tlsConfig := &tls.Config{
 		ServerName: serverName,
 	}
 
-	// For port 465 (SMTPS), use direct TLS connection
-	// For port 587 (STARTTLS), use smtp.Dial then StartTLS
 	var client *smtp.Client
 	var err error
+	var directTLSErr error
 
-	// Try direct TLS connection first (for port 465)
 	conn, err := tls.Dial("tcp", addr, tlsConfig)
 	if err == nil {
 		client, err = smtp.NewClient(conn, serverName)
 		if err != nil {
 			_ = conn.Close()
-			return fmt.Errorf("failed to create SMTP client: %w", err)
+			directTLSErr = fmt.Errorf("failed to create SMTP client: %w", err)
 		}
 	} else {
-		// Fall back to STARTTLS (for port 587)
+		directTLSErr = err
+	}
+
+	if client == nil {
 		client, err = smtp.Dial(addr)
 		if err != nil {
+			if directTLSErr != nil {
+				return fmt.Errorf("failed to connect to SMTP server using direct TLS or STARTTLS: %w", directTLSErr)
+			}
 			return fmt.Errorf("failed to connect to SMTP server: %w", err)
+		}
+
+		if ok, _ := client.Extension("STARTTLS"); !ok {
+			_ = client.Close()
+			if directTLSErr != nil {
+				return fmt.Errorf("SMTP server does not support STARTTLS and direct TLS failed: %w", directTLSErr)
+			}
+			return fmt.Errorf("SMTP server does not support STARTTLS")
 		}
 
 		if err = client.StartTLS(tlsConfig); err != nil {
@@ -297,40 +316,10 @@ func SendTestEmail(backupConfig *Config) error {
 // GetLastBackupLog retrieves the last backup log from systemd journal
 func GetLastBackupLog(backupName string) (string, error) {
 	serviceName := fmt.Sprintf("%s-backup.service", backupName)
-	cmd := fmt.Sprintf("journalctl --user -u %s -n 100 --no-pager", serviceName)
-
-	// Use sh to execute the command
-	output, err := execCommand("/bin/sh", "-c", cmd)
+	cmd := exec.Command("journalctl", "--user", "-u", serviceName, "-n", "100", "--no-pager")
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("failed to get logs: %w", err)
-	}
-
-	return output, nil
-}
-
-// execCommand is a helper to execute commands and return output
-func execCommand(name string, args ...string) (string, error) {
-	cmd := &exec.Cmd{
-		Path: name,
-		Args: append([]string{name}, args...),
-	}
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return "", err
-	}
-
-	if err := cmd.Start(); err != nil {
-		return "", err
-	}
-
-	output, err := io.ReadAll(stdout)
-	if err != nil {
-		return "", err
-	}
-
-	if err := cmd.Wait(); err != nil {
-		return string(output), err
+		return string(output), fmt.Errorf("failed to get logs: %w", err)
 	}
 
 	return string(output), nil

@@ -21,7 +21,7 @@ import (
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all quadlet units and their status",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		containersPath := viper.GetString("containers-path")
 		realContainersPath := shared.ResolveContainersDir(containersPath)
 
@@ -56,7 +56,7 @@ var listCmd = &cobra.Command{
 
 			// Check if unit is enabled by reading the file
 			enabledStatus := "-"
-			if unitType != ".network" {
+			if unitType != "network" {
 				enabledStatus = "✗"
 				content, err := os.ReadFile(path)
 				if err == nil && bytes.Contains(content, []byte("[Install]")) {
@@ -89,13 +89,12 @@ var listCmd = &cobra.Command{
 		})
 
 		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error walking directory: %v", err)))
-			os.Exit(1)
+			return err
 		}
 
 		if !foundAny {
 			fmt.Println(shared.WarningStyle.Render("No quadlet files found."))
-			return
+			return nil
 		}
 
 		// Batch check active status for all units in a single systemctl call
@@ -107,8 +106,7 @@ var listCmd = &cobra.Command{
 
 			activeStatuses, err := systemd.IsActiveMultiple(serviceNames)
 			if err != nil {
-				fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error checking unit status: %v", err)))
-				os.Exit(1)
+				return err
 			}
 
 			for i, active := range activeStatuses {
@@ -160,5 +158,6 @@ var listCmd = &cobra.Command{
 			Rows(rows...)
 
 		fmt.Println(t)
+		return nil
 	},
 }

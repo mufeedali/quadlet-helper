@@ -1,20 +1,21 @@
 package cloudflare
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/goccy/go-yaml"
+	"github.com/mufeedali/quadlet-helper/internal/cmdutil"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
 	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"go.yaml.in/yaml/v3"
 )
 
 const (
@@ -26,41 +27,41 @@ const (
 var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Fetch Cloudflare IPs and update Traefik config",
-	Run: func(c *cobra.Command, args []string) {
+	RunE: func(c *cobra.Command, args []string) error {
 		fmt.Println(shared.TitleStyle.Render("Cloudflare IP Updater for Traefik"))
 		fmt.Println(shared.TitleStyle.Render(strings.Repeat("=", 40)))
 
 		newIPs, err := fetchCloudflareIPs()
 		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error fetching Cloudflare IPs: %v", err)))
-			os.Exit(1)
+			return cmdutil.Wrap(err, "fetching Cloudflare IPs")
 		}
 
 		containersPath := viper.GetString("containers-path")
 		realContainersPath := shared.ResolveContainersDir(containersPath)
-		traefikConfigPath := filepath.Join(realContainersPath, "traefik", "container-config", "traefik", "traefik.yaml")
+		traefikConfigPath := shared.TraefikConfigPath(realContainersPath)
 
 		config, err := readTraefikConfig(traefikConfigPath)
 		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error reading traefik config: %v", err)))
-			os.Exit(1)
+			return cmdutil.Wrap(err, "reading traefik config")
 		}
 
-		needsUpdate, updatedConfig := updateCloudflareIPsInConfig(config, newIPs)
+		needsUpdate, updatedConfig, err := updateCloudflareIPsInConfig(config, newIPs)
+		if err != nil {
+			return cmdutil.Wrap(err, "updating cloudflare IPs in traefik config")
+		}
 		if !needsUpdate {
 			fmt.Println(shared.SuccessStyle.Render("✓ Cloudflare IPs are already up to date"))
 			fmt.Println(shared.SuccessStyle.Render("\nNo updates needed!"))
-			os.Exit(0)
+			return nil
 		}
 
 		err = writeTraefikConfig(traefikConfigPath, updatedConfig)
 		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error writing traefik config: %v", err)))
-			os.Exit(1)
+			return cmdutil.Wrap(err, "writing traefik config")
 		}
 
 		fmt.Println(shared.SuccessStyle.Render("\n✓ Cloudflare IPs updated successfully!"))
-		restartTraefik()
+		return restartTraefik()
 	},
 }
 
@@ -93,6 +94,9 @@ func fetchIPs(url string) ([]string, error) {
 	defer func() {
 		_ = resp.Body.Close()
 	}()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected response from %s: %s", url, resp.Status)
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -102,7 +106,7 @@ func fetchIPs(url string) ([]string, error) {
 	return strings.Split(strings.TrimSpace(string(body)), "\n"), nil
 }
 
-func readTraefikConfig(path string) (map[any]any, error) {
+func readTraefikConfig(path string) (map[string]any, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil, fmt.Errorf("traefik config not found: %s", path)
 	}
@@ -112,72 +116,65 @@ func readTraefikConfig(path string) (map[any]any, error) {
 		return nil, err
 	}
 
-	var config map[any]any
-	err = yaml.UnmarshalWithOptions(data, &config, yaml.Strict())
-	if err != nil {
+	var config map[string]any
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&config); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML config:\n%w", err)
 	}
 
 	return config, nil
 }
 
-func updateCloudflareIPsInConfig(config map[any]any, newIPs []string) (bool, map[any]any) {
-	path, err := yaml.PathString("$.cloudflare-ips.trustedIPs")
-	if err != nil {
-		fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error creating YAML path: %v", err)))
-		return false, config
-	}
-
-	data, err := yaml.MarshalWithOptions(config, yaml.Indent(2))
-	if err != nil {
-		fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error marshaling config: %v", err)))
-		return false, config
-	}
-
-	var currentIPs []string
-	if err := path.Read(strings.NewReader(string(data)), &currentIPs); err != nil {
-		fmt.Println(shared.CrossMark + " 'cloudflare-ips.trustedIPs' not found in config")
-		return false, config
-	}
-
-	sort.Strings(currentIPs)
-	sort.Strings(newIPs)
-
-	if strings.Join(currentIPs, ",") == strings.Join(newIPs, ",") {
-		return false, config
-	}
-
-	cfIPs, ok := config["cloudflare-ips"].(map[any]any)
+func updateCloudflareIPsInConfig(config map[string]any, newIPs []string) (bool, map[string]any, error) {
+	cfSection, ok := valueAsStringMap(config["cloudflare-ips"])
 	if !ok {
-		fmt.Println(shared.CrossMark + " 'cloudflare-ips' section not found in config")
-		return false, config
+		return false, config, fmt.Errorf("'cloudflare-ips' section not found in config")
 	}
 
-	var newIPsInterface []any
-	for _, ip := range newIPs {
-		newIPsInterface = append(newIPsInterface, ip)
+	currentIPs, ok := valueAsStringSlice(cfSection["trustedIPs"])
+	if !ok {
+		return false, config, fmt.Errorf("'cloudflare-ips.trustedIPs' must be a list of strings")
 	}
 
-	cfIPs["trustedIPs"] = newIPsInterface
-	config["cloudflare-ips"] = cfIPs
+	sortedCurrent := append([]string(nil), currentIPs...)
+	sortedNew := append([]string(nil), newIPs...)
+	sort.Strings(sortedCurrent)
+	sort.Strings(sortedNew)
 
-	return true, config
+	if strings.Join(sortedCurrent, ",") == strings.Join(sortedNew, ",") {
+		return false, config, nil
+	}
+
+	cfSection["trustedIPs"] = append([]string(nil), newIPs...)
+	config["cloudflare-ips"] = cfSection
+
+	return true, config, nil
 }
 
-func writeTraefikConfig(path string, config map[any]any) error {
+func writeTraefikConfig(path string, config map[string]any) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("failed to stat config: %w", err)
+	}
+
 	backupPath := fmt.Sprintf("%s.backup.%s", path, time.Now().Format("20060102_150405"))
 	if err := os.Rename(path, backupPath); err != nil {
 		return fmt.Errorf("failed to create backup: %v", err)
 	}
 	fmt.Println(shared.FolderMark + " Backup created: " + shared.FilePathStyle.Render(backupPath))
 
-	data, err := yaml.MarshalWithOptions(config, yaml.Indent(2), yaml.UseSingleQuote(false))
-	if err != nil {
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(config); err != nil {
+		_ = enc.Close()
+		_ = os.Rename(backupPath, path)
 		return fmt.Errorf("failed to marshal YAML: %w", err)
 	}
+	_ = enc.Close()
 
-	err = os.WriteFile(path, data, 0644)
-	if err != nil {
+	if err := os.WriteFile(path, buf.Bytes(), info.Mode().Perm()); err != nil {
 		_ = os.Rename(backupPath, path)
 		return fmt.Errorf("failed to write config, backup restored: %v", err)
 	}
@@ -186,12 +183,51 @@ func writeTraefikConfig(path string, config map[any]any) error {
 	return nil
 }
 
-func restartTraefik() {
+func valueAsStringMap(value any) (map[string]any, bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		return typed, true
+	case map[any]any:
+		converted := make(map[string]any, len(typed))
+		for key, nested := range typed {
+			keyString, ok := key.(string)
+			if !ok {
+				return nil, false
+			}
+			converted[keyString] = nested
+		}
+		return converted, true
+	default:
+		return nil, false
+	}
+}
+
+func valueAsStringSlice(value any) ([]string, bool) {
+	switch typed := value.(type) {
+	case []string:
+		return append([]string(nil), typed...), true
+	case []any:
+		result := make([]string, 0, len(typed))
+		for _, item := range typed {
+			itemString, ok := item.(string)
+			if !ok {
+				return nil, false
+			}
+			result = append(result, itemString)
+		}
+		return result, true
+	default:
+		return nil, false
+	}
+}
+
+func restartTraefik() error {
 	fmt.Println(shared.TitleStyle.Render("Restarting Traefik container..."))
 	if _, err := systemd.Restart("traefik.container"); err != nil {
 		fmt.Println(shared.CrossMark + " " + shared.ErrorStyle.Render(fmt.Sprintf("Failed to restart Traefik: %v", err)))
 		fmt.Println(shared.InfoMark + " Please restart manually: " + "systemctl --user restart traefik.container")
-		return
+		return cmdutil.Wrap(err, "restarting Traefik")
 	}
 	fmt.Println(shared.SuccessStyle.Render("✓ Traefik restarted successfully"))
+	return nil
 }

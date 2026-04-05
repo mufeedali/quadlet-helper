@@ -1,17 +1,20 @@
 package unit
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/mufeedali/quadlet-helper/internal/cmdutil"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+var errValidationFailed = errors.New("validation failed")
 
 var validateCmd = &cobra.Command{
 	Use:   "validate [unit-name...]",
@@ -19,7 +22,7 @@ var validateCmd = &cobra.Command{
 	Long: `This command runs systemd's own generator and verification tools
 to check for errors in quadlet files before they are installed.`,
 	ValidArgsFunction: unitCompletionFunc,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		// If one or more unit names are provided, validate each individually.
 		// If no args are provided, validate all units (existing behavior).
 		if len(args) > 0 {
@@ -36,13 +39,14 @@ to check for errors in quadlet files before they are installed.`,
 				}
 			}
 			if failures > 0 {
-				os.Exit(1)
+				return cmdutil.Errorf("validation failed for %d unit(s)", failures)
 			}
 		} else {
-			if !validateAllUnits() {
-				os.Exit(1)
+			if err := validateAllUnits(); err != nil {
+				return err
 			}
 		}
+		return nil
 	},
 }
 
@@ -68,7 +72,7 @@ func validateUnit(unitName string) (bool, string) {
 	return true, ""
 }
 
-func validateAllUnits() bool {
+func validateAllUnits() error {
 	containersPath := viper.GetString("containers-path")
 	realContainersPath := shared.ResolveContainersDir(containersPath)
 
@@ -108,7 +112,7 @@ func validateAllUnits() bool {
 
 	if err != nil {
 		fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("\nError walking directory: %v", err)))
-		return false
+		return err
 	}
 
 	if !foundAny {
@@ -122,5 +126,9 @@ func validateAllUnits() bool {
 		fmt.Println(shared.SuccessStyle.Render(summary))
 	}
 
-	return failedCount == 0
+	if failedCount > 0 {
+		return errValidationFailed
+	}
+
+	return nil
 }
