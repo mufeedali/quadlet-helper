@@ -8,13 +8,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var statusTypes []string
+
 var statusCmd = &cobra.Command{
 	Use:               "status <unit-name>...",
 	Short:             "Get the status of one or more quadlet units",
 	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: unitCompletionFunc,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		services, err := loadServices(args)
+		services, err := loadServices(args, statusTypes)
 		if err != nil {
 			return err
 		}
@@ -29,4 +31,9 @@ var statusCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+func init() {
+	statusCmd.Flags().StringSliceVar(&statusTypes, "type", []string{"container", "kube", "pod"}, "Quadlet unit types to act on")
+	_ = statusCmd.RegisterFlagCompletionFunc("type", typeCompletionFunc)
 }

@@ -8,6 +8,7 @@ import (
 )
 
 var restartNoReload bool
+var restartTypes []string
 
 var restartCmd = &cobra.Command{
 	Use:               "restart <unit-name>...",
@@ -17,6 +18,7 @@ var restartCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runServiceAction(
 			args,
+			restartTypes,
 			"Restarting %s...",
 			restartNoReload,
 			true,
@@ -32,4 +34,6 @@ var restartCmd = &cobra.Command{
 
 func init() {
 	restartCmd.Flags().BoolVar(&restartNoReload, "no-reload", false, "Skip systemctl daemon-reload step")
+	restartCmd.Flags().StringSliceVar(&restartTypes, "type", []string{"container", "kube", "pod"}, "Quadlet unit types to act on")
+	_ = restartCmd.RegisterFlagCompletionFunc("type", typeCompletionFunc)
 }

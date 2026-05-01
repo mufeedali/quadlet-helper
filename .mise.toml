@@ -1,5 +1,6 @@
 [tools]
 go = "1.26.1"
+golangci-lint = "latest"
 
 [tasks]
 install = '''

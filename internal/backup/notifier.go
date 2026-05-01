@@ -120,6 +120,11 @@ func formatEmailBody(backupConfig *Config, status string, details string) (strin
 		return "", err
 	}
 
+	// If this is an rclone backup, limit details to the last 50 lines to avoid huge emails
+	if backupConfig.Type == BackupTypeRclone && details != "" {
+		details = tailLines(details, 50)
+	}
+
 	data := struct {
 		Status      string
 		StatusClass string
@@ -148,6 +153,22 @@ func formatEmailBody(backupConfig *Config, status string, details string) (strin
 	}
 
 	return body.String(), nil
+}
+
+// tailLines returns the last n lines from s. If s has fewer than n lines, s is returned unchanged.
+func tailLines(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	// Normalize CRLF to LF
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	// Trim any trailing newlines so we don't get an extra empty line
+	s = strings.TrimRight(s, "\n")
+	lines := strings.Split(s, "\n")
+	if len(lines) <= n {
+		return s
+	}
+	return strings.Join(lines[len(lines)-n:], "\n")
 }
 
 // extractEmailAddress extracts the email address from a string that may contain a display name

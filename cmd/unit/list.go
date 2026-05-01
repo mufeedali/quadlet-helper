@@ -4,16 +4,13 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
-	"io/fs"
 	"os"
-	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
+	"github.com/mufeedali/quadlet-helper/internal/quadlet"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
-	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -25,114 +22,65 @@ var listCmd = &cobra.Command{
 		containersPath := viper.GetString("containers-path")
 		realContainersPath := shared.ResolveContainersDir(containersPath)
 
-		type unitInfo struct {
-			name        string
-			serviceName string
-			unitType    string
-			enabled     string
-			status      string
+		units, err := quadlet.List(realContainersPath)
+		if err != nil {
+			return err
 		}
 
-		var units []*unitInfo
-		var unitsToCheck []*unitInfo
-		foundAny := false
+		if len(units) == 0 {
+			fmt.Println(shared.WarningStyle.Render("No quadlet files found."))
+			return nil
+		}
 
-		err := shared.WalkWithSymlinks(realContainersPath, func(path string, d fs.DirEntry) error {
-			if d.IsDir() {
-				// Skip dir
-				return nil
-			}
+		type row struct {
+			name     string
+			unitType string
+			enabled  string
+			status   string
+		}
 
-			ext := filepath.Ext(d.Name())
-			if !isQuadletUnit(ext) {
-				// Skip non-quadlet files (like maybe READMEs)
-				return nil
-			}
+		rows := make([]row, 0, len(units))
+		for _, u := range units {
+			unitType := u.UnitType()
 
-			foundAny = true
-			unitName := strings.TrimSuffix(d.Name(), ext)
-			unitType := strings.TrimPrefix(ext, ".")
-			serviceName := getServiceNameFromExtension(unitName, ext)
-
-			// Check if unit is enabled by reading the file
 			enabledStatus := "-"
-			if unitType != "network" {
+			if unitType != "network" && unitType != "volume" && unitType != "image" && unitType != "build" {
 				enabledStatus = "✗"
-				content, err := os.ReadFile(path)
+				content, err := os.ReadFile(u.Path)
 				if err == nil && bytes.Contains(content, []byte("[Install]")) {
 					enabledStatus = "✓"
 				}
 			}
 
-			// Status will be set later in a batch call
-			activeStatus := ""
-
-			// Don't show status for units that are typically 'oneshot'
-			if unitType == "volume" || unitType == "image" || unitType == "build" {
-				enabledStatus = "-"
-				activeStatus = "-"
-			}
-
-			u := &unitInfo{
-				name:        unitName,
-				serviceName: serviceName,
-				unitType:    unitType,
-				enabled:     enabledStatus,
-				status:      activeStatus,
-			}
-			units = append(units, u)
-
-			if activeStatus != "-" {
-				unitsToCheck = append(unitsToCheck, u)
-			}
-			return nil
-		})
-
-		if err != nil {
-			return err
-		}
-
-		if !foundAny {
-			fmt.Println(shared.WarningStyle.Render("No quadlet files found."))
-			return nil
-		}
-
-		// Batch check active status for all units in a single systemctl call
-		if len(unitsToCheck) > 0 {
-			serviceNames := make([]string, len(unitsToCheck))
-			for i, u := range unitsToCheck {
-				serviceNames[i] = u.serviceName
-			}
-
-			activeStatuses, err := systemd.IsActiveMultiple(serviceNames)
-			if err != nil {
-				return err
-			}
-
-			for i, active := range activeStatuses {
-				if active {
-					unitsToCheck[i].status = "✓"
+			activeStatus := "-"
+			if unitType != "volume" && unitType != "image" && unitType != "build" {
+				if u.IsActive() {
+					activeStatus = "✓"
 				} else {
-					unitsToCheck[i].status = "✗"
+					activeStatus = "✗"
 				}
 			}
+
+			rows = append(rows, row{
+				name:     u.BaseName(),
+				unitType: unitType,
+				enabled:  enabledStatus,
+				status:   activeStatus,
+			})
 		}
 
-		// Sort units before processing
-		slices.SortFunc(units, func(a, b *unitInfo) int {
+		slices.SortFunc(rows, func(a, b row) int {
 			if a.unitType != b.unitType {
-				return cmp.Compare(a.unitType, b.unitType) // Group order
+				return cmp.Compare(a.unitType, b.unitType)
 			}
-			return cmp.Compare(a.name, b.name) // Sort within group
+			return cmp.Compare(a.name, b.name)
 		})
 
-		// Now build rows in correct order
-		rows := [][]string{}
-		for _, u := range units {
-			rows = append(rows, []string{u.name, u.unitType, u.enabled, u.status})
+		tableRows := make([][]string, len(rows))
+		for i, r := range rows {
+			tableRows[i] = []string{r.name, r.unitType, r.enabled, r.status}
 		}
 
-		// Build the table with lipgloss
 		re := lipgloss.NewRenderer(os.Stdout)
 
 		var (
@@ -140,7 +88,6 @@ var listCmd = &cobra.Command{
 			BorderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
 		)
 
-		// Style headers with bold
 		headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
 
 		t := table.New().
@@ -155,7 +102,7 @@ var listCmd = &cobra.Command{
 				headerStyle.Render("Boot"),
 				headerStyle.Render("Running"),
 			).
-			Rows(rows...)
+			Rows(tableRows...)
 
 		fmt.Println(t)
 		return nil

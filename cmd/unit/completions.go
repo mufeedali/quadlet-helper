@@ -1,92 +1,83 @@
 package unit
 
 import (
-	"io/fs"
-	"path/filepath"
 	"strings"
 
+	"github.com/mufeedali/quadlet-helper/internal/quadlet"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
-	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
+// allQuadletTypes lists every type that podman quadlet understands.
+var allQuadletTypes = []string{"artifact", "build", "container", "image", "kube", "network", "pod", "volume"}
+
+// typeCompletionFunc completes values for the --type flag.
+func typeCompletionFunc(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return allQuadletTypes, cobra.ShellCompDirectiveNoFileComp
+}
+
+func typeFilter(cmd *cobra.Command) map[string]bool {
+	types, err := cmd.Flags().GetStringSlice("type")
+	if err != nil || len(types) == 0 {
+		return nil
+	}
+	m := make(map[string]bool, len(types))
+	for _, t := range types {
+		m[t] = true
+	}
+	return m
+}
+
 // unitCompletionFunc provides dynamic completion for quadlet unit names.
+// Respects --type if the command has that flag.
 func unitCompletionFunc(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	containersPath := viper.GetString("containers-path")
 	realContainersPath := shared.ResolveContainersDir(containersPath)
 
-	var completions []string
-
-	err := shared.WalkWithSymlinks(realContainersPath, func(path string, d fs.DirEntry) error {
-		if d.IsDir() {
-			return nil
-		}
-
-		ext := filepath.Ext(d.Name())
-		if !isQuadletUnit(ext) {
-			return nil
-		}
-
-		unitName := strings.TrimSuffix(d.Name(), ext)
-		// Add to completions if it matches the currently typed prefix
-		if strings.HasPrefix(unitName, toComplete) {
-			completions = append(completions, unitName)
-		}
-		return nil
-	})
-
+	units, err := quadlet.List(realContainersPath)
 	if err != nil {
-		// In case of error, return no completions
 		return nil, cobra.ShellCompDirectiveError
 	}
 
+	filter := typeFilter(cmd)
+	var completions []string
+	for _, u := range units {
+		if filter != nil && !filter[u.UnitType()] {
+			continue
+		}
+		name := u.BaseName()
+		if strings.HasPrefix(name, toComplete) {
+			completions = append(completions, name)
+		}
+	}
 	return completions, cobra.ShellCompDirectiveNoFileComp
 }
 
 // activeUnitCompletionFunc provides dynamic completion for active quadlet unit names.
+// Respects --type if the command has that flag.
 func activeUnitCompletionFunc(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	containersPath := viper.GetString("containers-path")
 	realContainersPath := shared.ResolveContainersDir(containersPath)
 
-	activeServices, err := systemd.ListActiveServices()
+	units, err := quadlet.List(realContainersPath)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveError
 	}
 
-	// Create a map for faster lookup
-	activeMap := make(map[string]bool)
-	for _, s := range activeServices {
-		activeMap[s] = true
-	}
-
+	filter := typeFilter(cmd)
 	var completions []string
-
-	err = shared.WalkWithSymlinks(realContainersPath, func(path string, d fs.DirEntry) error {
-		if d.IsDir() {
-			return nil
+	for _, u := range units {
+		if !u.IsActive() {
+			continue
 		}
-
-		ext := filepath.Ext(d.Name())
-		if !isQuadletUnit(ext) {
-			return nil
+		if filter != nil && !filter[u.UnitType()] {
+			continue
 		}
-
-		unitName := strings.TrimSuffix(d.Name(), ext)
-		serviceName := getServiceNameFromExtension(unitName, ext)
-
-		// Add to completions if it matches the currently typed prefix AND is active
-		if activeMap[serviceName] && strings.HasPrefix(unitName, toComplete) {
-			completions = append(completions, unitName)
+		name := u.BaseName()
+		if strings.HasPrefix(name, toComplete) {
+			completions = append(completions, name)
 		}
-
-		return nil
-	})
-
-	if err != nil {
-		// In case of error, return no completions
-		return nil, cobra.ShellCompDirectiveError
 	}
-
 	return completions, cobra.ShellCompDirectiveNoFileComp
 }

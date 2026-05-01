@@ -11,13 +11,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var logsTypes []string
+
 var logsCmd = &cobra.Command{
 	Use:               "logs <unit-name>...",
 	Short:             "View logs of one or more quadlet units",
 	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: unitCompletionFunc,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		services, err := loadServices(args)
+		services, err := loadServices(args, logsTypes)
 		if err != nil {
 			return err
 		}
@@ -49,4 +51,6 @@ var logsCmd = &cobra.Command{
 
 func init() {
 	logsCmd.Flags().BoolP("follow", "f", false, "Follow log output")
+	logsCmd.Flags().StringSliceVar(&logsTypes, "type", []string{"container", "kube", "pod"}, "Quadlet unit types to act on")
+	_ = logsCmd.RegisterFlagCompletionFunc("type", typeCompletionFunc)
 }

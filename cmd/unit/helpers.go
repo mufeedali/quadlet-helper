@@ -6,21 +6,22 @@ import (
 	"strings"
 
 	"github.com/mufeedali/quadlet-helper/internal/cmdutil"
+	"github.com/mufeedali/quadlet-helper/internal/quadlet"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
 	"github.com/mufeedali/quadlet-helper/internal/systemd"
 	"github.com/spf13/viper"
 )
 
-func loadServices(unitNames []string) ([]string, error) {
-	services, err := resolveServiceNames(unitNames)
+func loadServices(unitNames []string, types []string) ([]string, error) {
+	services, err := resolveServiceNames(unitNames, types)
 	if err != nil {
 		return nil, cmdutil.Wrap(err, "resolving service names")
 	}
 	return services, nil
 }
 
-func runServiceAction(unitNames []string, title string, noReload bool, reload bool, action func([]string) (string, error), failure string, success string, hint func([]string) string) error {
-	services, err := loadServices(unitNames)
+func runServiceAction(unitNames []string, types []string, title string, noReload bool, reload bool, action func([]string) (string, error), failure string, success string, hint func([]string) string) error {
+	services, err := loadServices(unitNames, types)
 	if err != nil {
 		return err
 	}
@@ -58,13 +59,22 @@ func updateInstallSections(unitNames []string, actionName string, unchangedMessa
 	containersPath := viper.GetString("containers-path")
 	realContainersPath := shared.ResolveContainersDir(containersPath)
 
+	allUnits, err := quadlet.List(realContainersPath)
+	if err != nil {
+		return err
+	}
+	index := make(map[string]string, len(allUnits)) // baseName -> path
+	for _, u := range allUnits {
+		index[u.BaseName()] = u.Path
+	}
+
 	var anyChanged bool
 	var failures int
 
 	for _, unitName := range unitNames {
-		quadletFile, err := findQuadletFile(realContainersPath, unitName)
-		if err != nil {
-			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error: %v", err)))
+		quadletFile, ok := index[unitName]
+		if !ok {
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("Error: quadlet file for unit %q not found", unitName)))
 			failures++
 			continue
 		}

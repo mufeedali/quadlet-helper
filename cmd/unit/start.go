@@ -6,6 +6,7 @@ import (
 )
 
 var startNoReload bool
+var startTypes []string
 
 var startCmd = &cobra.Command{
 	Use:               "start <unit-name>...",
@@ -13,10 +14,12 @@ var startCmd = &cobra.Command{
 	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: unitCompletionFunc,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runServiceAction(args, "Starting %s...", startNoReload, true, systemd.StartMultiple, "starting services", "✓ Successfully started %s", nil)
+		return runServiceAction(args, startTypes, "Starting %s...", startNoReload, true, systemd.StartMultiple, "starting services", "✓ Successfully started %s", nil)
 	},
 }
 
 func init() {
 	startCmd.Flags().BoolVar(&startNoReload, "no-reload", false, "Skip systemctl daemon-reload step")
+	startCmd.Flags().StringSliceVar(&startTypes, "type", []string{"container", "kube", "pod"}, "Quadlet unit types to act on")
+	_ = startCmd.RegisterFlagCompletionFunc("type", typeCompletionFunc)
 }

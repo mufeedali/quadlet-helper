@@ -3,12 +3,11 @@ package unit
 import (
 	"errors"
 	"fmt"
-	"io/fs"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/mufeedali/quadlet-helper/internal/cmdutil"
+	"github.com/mufeedali/quadlet-helper/internal/quadlet"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -23,14 +22,30 @@ var validateCmd = &cobra.Command{
 to check for errors in quadlet files before they are installed.`,
 	ValidArgsFunction: unitCompletionFunc,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// If one or more unit names are provided, validate each individually.
-		// If no args are provided, validate all units (existing behavior).
 		if len(args) > 0 {
+			containersPath := viper.GetString("containers-path")
+			realContainersPath := shared.ResolveContainersDir(containersPath)
+
+			units, err := quadlet.List(realContainersPath)
+			if err != nil {
+				return err
+			}
+			index := make(map[string]*quadlet.Unit, len(units))
+			for i, u := range units {
+				index[u.BaseName()] = &units[i]
+			}
+
 			var failures int
 			for _, unitName := range args {
 				fmt.Println(shared.TitleStyle.Render(fmt.Sprintf("Validating %s...", unitName)))
-				ok, output := validateUnit(unitName)
+				u, ok := index[unitName]
 				if !ok {
+					fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("✗ Unit %q not found", unitName)))
+					failures++
+					continue
+				}
+				ok2, output := runValidate(u.UnitName)
+				if !ok2 {
 					fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("✗ Validation failed for %s:", unitName)))
 					fmt.Println(output)
 					failures++
@@ -41,34 +56,20 @@ to check for errors in quadlet files before they are installed.`,
 			if failures > 0 {
 				return cmdutil.Errorf("validation failed for %d unit(s)", failures)
 			}
-		} else {
-			if err := validateAllUnits(); err != nil {
-				return err
-			}
+			return nil
 		}
-		return nil
+		return validateAllUnits()
 	},
 }
 
-// validateUnit checks a single unit and returns its validity and any output.
-// It does not print anything itself.
-func validateUnit(unitName string) (bool, string) {
-	containersPath := viper.GetString("containers-path")
-	realContainersPath := shared.ResolveContainersDir(containersPath)
-	quadletFile, err := findQuadletFile(realContainersPath, unitName)
-	if err != nil {
-		return false, fmt.Sprintf("Error finding unit: %v", err)
-	}
-
-	serviceName := getServiceNameFromExtension(unitName, filepath.Ext(quadletFile))
-
+// runValidate runs systemd-analyze verify on a service unit name and returns
+// whether it passed and any output.
+func runValidate(serviceName string) (bool, string) {
 	cmd := exec.Command("systemd-analyze", "--user", "--generators=true", "verify", serviceName)
 	output, err := cmd.CombinedOutput()
-
 	if err != nil {
 		return false, string(output)
 	}
-
 	return true, ""
 }
 
@@ -78,57 +79,36 @@ func validateAllUnits() error {
 
 	fmt.Println(shared.TitleStyle.Render("Validating all Quadlet Units in " + shared.FilePathStyle.Render(realContainersPath) + "\n"))
 
-	var validCount, failedCount int
-	foundAny := false
-
-	err := shared.WalkWithSymlinks(realContainersPath, func(path string, d fs.DirEntry) error {
-		if d.IsDir() {
-			return nil
-		}
-
-		ext := filepath.Ext(d.Name())
-		if !isQuadletUnit(ext) {
-			return nil
-		}
-
-		foundAny = true
-		unitName := strings.TrimSuffix(d.Name(), ext)
-		ok, output := validateUnit(unitName)
-		if ok {
-			fmt.Println(shared.SuccessStyle.Render(fmt.Sprintf("  ✓ %s", unitName)))
-			validCount++
-			return nil
-		}
-
-		fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("  ✗ %s", unitName)))
-		// Indent the error output for clarity
-		for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
-			fmt.Printf("    %s\n", line)
-		}
-		failedCount++
-
-		return nil
-	})
-
+	units, err := quadlet.List(realContainersPath)
 	if err != nil {
-		fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("\nError walking directory: %v", err)))
 		return err
 	}
 
-	if !foundAny {
+	if len(units) == 0 {
 		fmt.Println(shared.WarningStyle.Render("No quadlet files found."))
+		return nil
+	}
+
+	var validCount, failedCount int
+	for _, u := range units {
+		ok, output := runValidate(u.UnitName)
+		if ok {
+			fmt.Println(shared.SuccessStyle.Render(fmt.Sprintf("  ✓ %s", u.BaseName())))
+			validCount++
+		} else {
+			fmt.Println(shared.ErrorStyle.Render(fmt.Sprintf("  ✗ %s", u.BaseName())))
+			for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
+				fmt.Printf("    %s\n", line)
+			}
+			failedCount++
+		}
 	}
 
 	summary := fmt.Sprintf("\nValidation complete. (%d valid, %d failed)", validCount, failedCount)
 	if failedCount > 0 {
 		fmt.Println(shared.ErrorStyle.Render(summary))
-	} else {
-		fmt.Println(shared.SuccessStyle.Render(summary))
-	}
-
-	if failedCount > 0 {
 		return errValidationFailed
 	}
-
+	fmt.Println(shared.SuccessStyle.Render(summary))
 	return nil
 }
