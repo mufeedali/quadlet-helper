@@ -1,23 +1,35 @@
 package shared
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"os"
+	"strconv"
+)
+
+// Style applies ANSI formatting. Honors NO_COLOR.
+type Style struct {
+	bold  bool
+	color int // SGR color code; 0 = default
+}
+
+func (s Style) Render(text string) string {
+	if os.Getenv("NO_COLOR") != "" || (!s.bold && s.color == 0) {
+		return text
+	}
+	if s.bold && s.color != 0 {
+		return "\x1b[1;" + strconv.Itoa(s.color) + "m" + text + "\x1b[0m"
+	}
+	if s.bold {
+		return "\x1b[1m" + text + "\x1b[0m"
+	}
+	return "\x1b[" + strconv.Itoa(s.color) + "m" + text + "\x1b[0m"
+}
 
 var (
-	TitleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#00BFFF")) // DeepSkyBlue
-
-	SuccessStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#32CD32")) // LimeGreen
-
-	ErrorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF4500")) // OrangeRed
-
-	WarningStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FFD700")) // Gold
-
-	FilePathStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FFFF00")) // Yellow
+	TitleStyle    = Style{bold: true, color: 96} // Bold Bright Cyan
+	SuccessStyle  = Style{color: 92}             // Bright Green
+	ErrorStyle    = Style{color: 91}             // Bright Red
+	WarningStyle  = Style{color: 93}             // Bright Yellow
+	FilePathStyle = Style{color: 93}             // Bright Yellow
 
 	CheckMark  = SuccessStyle.Render("✓")
 	CrossMark  = ErrorStyle.Render("✗")

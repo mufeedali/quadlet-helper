@@ -6,14 +6,66 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
+	"unicode/utf8"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/lipgloss/table"
 	"github.com/mufeedali/quadlet-helper/internal/quadlet"
 	"github.com/mufeedali/quadlet-helper/internal/shared"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+func printTable(headers []string, rows [][]string) {
+	widths := make([]int, len(headers))
+	for i, h := range headers {
+		widths[i] = utf8.RuneCountInString(h)
+	}
+	for _, row := range rows {
+		for i, cell := range row {
+			if i < len(widths) {
+				if n := utf8.RuneCountInString(cell); n > widths[i] {
+					widths[i] = n
+				}
+			}
+		}
+	}
+
+	// border wraps each box-drawing character in grey; cell text is left unstyled.
+	border := func(s string) string {
+		if os.Getenv("NO_COLOR") != "" {
+			return s
+		}
+		return "\x1b[38;5;238m" + s + "\x1b[0m"
+	}
+
+	hline := func(left, mid, right string) {
+		segs := make([]string, len(widths))
+		for i, w := range widths {
+			segs[i] = strings.Repeat("─", w+2)
+		}
+		fmt.Println(border(left + strings.Join(segs, mid) + right))
+	}
+
+	printRow := func(cells []string, isHeader bool) {
+		var b strings.Builder
+		for i, cell := range cells {
+			pad := strings.Repeat(" ", widths[i]-utf8.RuneCountInString(cell))
+			if isHeader {
+				cell = shared.TitleStyle.Render(cell)
+			}
+			b.WriteString(border("│") + " " + cell + pad + " ")
+		}
+		fmt.Println(b.String() + border("│"))
+	}
+
+	hline("╭", "┬", "╮")
+	printRow(headers, true)
+	hline("├", "┼", "┤")
+	for _, row := range rows {
+		printRow(row, false)
+	}
+	hline("╰", "┴", "╯")
+}
 
 var listCmd = &cobra.Command{
 	Use:   "list",
@@ -81,30 +133,8 @@ var listCmd = &cobra.Command{
 			tableRows[i] = []string{r.name, r.unitType, r.enabled, r.status}
 		}
 
-		re := lipgloss.NewRenderer(os.Stdout)
-
-		var (
-			CellStyle   = re.NewStyle().Padding(0, 1)
-			BorderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
-		)
-
-		headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-
-		t := table.New().
-			Border(lipgloss.RoundedBorder()).
-			BorderStyle(BorderStyle).
-			StyleFunc(func(row, col int) lipgloss.Style {
-				return CellStyle
-			}).
-			Headers(
-				headerStyle.Render("Unit"),
-				headerStyle.Render("Type"),
-				headerStyle.Render("Boot"),
-				headerStyle.Render("Running"),
-			).
-			Rows(tableRows...)
-
-		fmt.Println(t)
+		printTable([]string{"Unit", "Type", "Boot", "Running"}, tableRows)
 		return nil
 	},
 }
+

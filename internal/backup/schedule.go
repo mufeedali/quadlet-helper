@@ -3,9 +3,6 @@ package backup
 import (
 	"fmt"
 	"strings"
-
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 )
 
 // ParseSchedule converts schedule string to systemd OnCalendar format
@@ -36,8 +33,7 @@ func ParseSchedule(schedule string) (string, error) {
 	if after, ok := strings.CutPrefix(schedule, "weekly "); ok {
 		parts := strings.Fields(after)
 		if len(parts) == 2 {
-			caser := cases.Title(language.English)
-			day := caser.String(parts[0])
+			day := strings.ToUpper(parts[0][:1]) + strings.ToLower(parts[0][1:])
 			return fmt.Sprintf("%s *-*-* %s:00", day, parts[1]), nil
 		}
 	}

@@ -26,7 +26,7 @@ Or build from source:
 ```bash
 git clone https://github.com/mufeedali/quadlet-helper.git
 cd quadlet-helper
-go build -o qh
+go build -ldflags="-s -w" -trimpath -o qh
 ```
 
 ## Usage

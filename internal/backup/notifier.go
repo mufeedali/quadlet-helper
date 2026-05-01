@@ -1,10 +1,9 @@
 package backup
 
 import (
-	"bytes"
 	"crypto/tls"
 	"fmt"
-	"html/template"
+	"html"
 	"net/smtp"
 	"os"
 	"os/exec"
@@ -72,87 +71,69 @@ func SendNotification(backupConfig *Config, status string, details string) error
 
 // formatEmailBody creates the email body
 func formatEmailBody(backupConfig *Config, status string, details string) (string, error) {
-	bodyTemplate := `
-	<!DOCTYPE html>
-	<html>
-	<head>
-		<style>
-			body { font-family: sans-serif; }
-			.container { padding: 20px; border: 1px solid #ddd; border-radius: 5px; max-width: 600px; margin: auto; }
-			.status { font-size: 20px; font-weight: bold; }
-			.status.success { color: green; }
-			.status.failure { color: red; }
-			.status.test { color: blue; }
-			.details { background-color: #f5f5f5; padding: 15px; border-radius: 3px; white-space: pre-wrap; font-family: monospace; }
-			table { border-collapse: collapse; width: 100%; margin-bottom: 20px; border: 1px solid #ddd; }
-			th, td { text-align: left; padding: 8px; border: 1px solid #ddd; }
-			th { background-color: #f2f2f2; }
-			ul { margin: 0; padding-left: 20px; }
-		</style>
-	</head>
-	<body>
-		<div class="container">
-			<h2>Backup Report</h2>
-			<p>
-				<span class="status {{ .StatusClass }}">{{ .Status }}</span>
-			</p>
-			<table>
-				<tr><th>Backup Name</th><td>{{ .Name }}</td></tr>
-				<tr><th>Backup Type</th><td>{{ .Type }}</td></tr>
-				<tr><th>Timestamp</th><td>{{ .Timestamp }}</td></tr>
-				<tr><th>Sources</th><td>{{ if gt (len .Sources) 1 }}<ul>{{ range .Sources }}<li>{{ . }}</li>{{ end }}</ul>{{ else }}{{ index .Sources 0 }}{{ end }}</td></tr>
-				<tr><th>Destination</th><td>{{ .Destination }}</td></tr>
-				<tr><th>Schedule</th><td>{{ .Schedule }}</td></tr>
-			</table>
-
-			{{ if .Details }}
-			<h3>Details:</h3>
-			<pre class="details">{{ .Details }}</pre>
-			{{ end }}
-
-			<p><small>This is an automated message from quadlet-helper.</small></p>
-		</div>
-	</body>
-	</html>`
-
-	tmpl, err := template.New("email").Parse(bodyTemplate)
-	if err != nil {
-		return "", err
-	}
-
 	// If this is an rclone backup, limit details to the last 50 lines to avoid huge emails
 	if backupConfig.Type == BackupTypeRclone && details != "" {
 		details = tailLines(details, 50)
 	}
 
-	data := struct {
-		Status      string
-		StatusClass string
-		Name        string
-		Type        string
-		Timestamp   string
-		Sources     []string
-		Destination string
-		Schedule    string
-		Details     string
-	}{
-		Status:      strings.ToUpper(status),
-		StatusClass: status, // "success" or "failure"
-		Name:        backupConfig.Name,
-		Type:        string(backupConfig.Type),
-		Timestamp:   time.Now().Format(time.RFC1123Z),
-		Sources:     backupConfig.Source,
-		Destination: backupConfig.GetDestination(),
-		Schedule:    backupConfig.Schedule,
-		Details:     details,
+	e := html.EscapeString
+	statusUpper := strings.ToUpper(status)
+	timestamp := time.Now().Format(time.RFC1123Z)
+
+	var sourcesHTML strings.Builder
+	if len(backupConfig.Source) > 1 {
+		sourcesHTML.WriteString("<ul>")
+		for _, s := range backupConfig.Source {
+			sourcesHTML.WriteString("<li>")
+			sourcesHTML.WriteString(e(s))
+			sourcesHTML.WriteString("</li>")
+		}
+		sourcesHTML.WriteString("</ul>")
+	} else if len(backupConfig.Source) == 1 {
+		sourcesHTML.WriteString(e(backupConfig.Source[0]))
 	}
 
-	var body bytes.Buffer
-	if err := tmpl.Execute(&body, data); err != nil {
-		return "", err
+	var detailsHTML string
+	if details != "" {
+		detailsHTML = `<h3>Details:</h3><pre class="details">` + e(details) + `</pre>`
 	}
 
-	return body.String(), nil
+	body := `<!DOCTYPE html>
+<html>
+<head>
+<style>
+body { font-family: sans-serif; }
+.container { padding: 20px; border: 1px solid #ddd; border-radius: 5px; max-width: 600px; margin: auto; }
+.status { font-size: 20px; font-weight: bold; }
+.status.success { color: green; }
+.status.failure { color: red; }
+.status.test { color: blue; }
+.details { background-color: #f5f5f5; padding: 15px; border-radius: 3px; white-space: pre-wrap; font-family: monospace; }
+table { border-collapse: collapse; width: 100%; margin-bottom: 20px; border: 1px solid #ddd; }
+th, td { text-align: left; padding: 8px; border: 1px solid #ddd; }
+th { background-color: #f2f2f2; }
+ul { margin: 0; padding-left: 20px; }
+</style>
+</head>
+<body>
+<div class="container">
+<h2>Backup Report</h2>
+<p><span class="status ` + e(status) + `">` + e(statusUpper) + `</span></p>
+<table>
+<tr><th>Backup Name</th><td>` + e(backupConfig.Name) + `</td></tr>
+<tr><th>Backup Type</th><td>` + e(string(backupConfig.Type)) + `</td></tr>
+<tr><th>Timestamp</th><td>` + e(timestamp) + `</td></tr>
+<tr><th>Sources</th><td>` + sourcesHTML.String() + `</td></tr>
+<tr><th>Destination</th><td>` + e(backupConfig.GetDestination()) + `</td></tr>
+<tr><th>Schedule</th><td>` + e(backupConfig.Schedule) + `</td></tr>
+</table>
+` + detailsHTML + `
+<p><small>This is an automated message from quadlet-helper.</small></p>
+</div>
+</body>
+</html>`
+
+	return body, nil
 }
 
 // tailLines returns the last n lines from s. If s has fewer than n lines, s is returned unchanged.
