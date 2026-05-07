@@ -2,6 +2,8 @@
 
 Things that should probably be part of a script. Involves a good bit of AI-generated code and meant primarily for personal use with [quad-bucket](https://github.com/mufeedali/quad-bucket).
 
+## Motivation
+
 Part of the experiment here is to explore Go as a functional, object-oriented and AOT-compiled alternative to scripting. A largely successful experiment so far.
 
 ## Features
@@ -11,7 +13,7 @@ Part of the experiment here is to explore Go as a functional, object-oriented an
 - **Example files generation**: Generate example configurations (currently only traefik) and environment files
 - **Backup Management**: Create and manage automated backup services using rsync, restic, or rclone. Unnecessarily elaborate, including email notifications. Should have still been just a script.
 
-## Installation
+## Quick Start
 
 You probably shouldn't be installing this. If this is somehow exactly what you want, you're probably doing something wrong...
 
@@ -69,6 +71,10 @@ Override with the `--containers-path` flag:
 ```bash
 qh --containers-path /custom/path unit list
 ```
+
+## Contributing
+
+Don't bother. This one isn't worth it. Unless you think otherwise... In which case, sure, go on.
 
 ## License
 
